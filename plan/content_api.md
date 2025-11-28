@@ -1,5 +1,3 @@
-content_api:
-
 - /v1/seasons/2025/rounds
     return {
         metadata: {
