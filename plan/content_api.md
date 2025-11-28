@@ -1,10 +1,34 @@
-- /v1/seasons/2025/rounds
-    return {
-        metadata: {
-            "date": "date unix" // date de mise à jour des données
-            "cached": true/false // a la réponse de l'api
-        },
-        result: {
+# content_api
+
+**Type**: Service API REST HTTP
+**Port**: 8080
+**Langage**: Go
+**Objectif**: API publique pour la consommation de données F1
+
+## Responsabilités
+- Servir les endpoints HTTP publics
+- Appeler data_scheduler via gRPC pour récupérer les données
+- Transformer les réponses gRPC en JSON
+- Retourner un format de réponse cohérent avec métadonnées
+
+## Technologie
+- **Protocole**: HTTP/REST (public)
+- **Interne**: Client gRPC (appelle data_scheduler)
+- **Format de réponse**: JSON
+
+## Endpoints
+
+### GET /v1/seasons/:year/rounds
+Retourne tous les rounds pour une saison
+
+**Réponse**:
+```json
+{
+    "metadata": {
+        "date": "date unix",
+        "cached": true/false
+    },
+    "result": {
             "season": 2025,
             "round_id": 0,
             "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
@@ -21,8 +45,14 @@
         
     }
     
-    - /v1/seasons/2025/rounds/0
-        return {
+```
+
+### GET /v1/seasons/:year/rounds/:round_id
+Retourne les détails d'un round spécifique avec les sessions
+
+**Réponse**:
+```json
+{
             metadata: {
                 "date": "date unix" // date de mise à jour des données
                 "cached": true/false // a la réponse de l'api
@@ -63,8 +93,14 @@
             }
         }
 
-    - /v1/seasons/2025/drivers
-        return {
+```
+
+### GET /v1/seasons/:year/drivers
+Retourne le classement des pilotes pour une saison
+
+**Réponse**:
+```json
+{
             metadata: {
                 "date": "date unix" // date de mise à jour des données
                 "cached": true/false // a la réponse de l'api
@@ -91,8 +127,14 @@
             }
         }
 
-    - /v1/seasons
-        return {
+```
+
+### GET /v1/seasons
+Retourne toutes les saisons
+
+**Réponse**:
+```json
+{
             metadata: {
                 "date": "date unix" // date de mise à jour des données
                 "cached": true/false // a la réponse de l'api
@@ -132,7 +174,12 @@
                         "total_drivers": 22,
                         "total_teams": 10,
                     }
-                ],
+                ]
             }
         }
+```
 
+## Métadonnées de réponse
+Tous les endpoints retournent des métadonnées cohérentes:
+- `date`: Timestamp Unix de la dernière mise à jour des données
+- `cached`: Booléen indiquant si la réponse a été servie depuis le cache
