@@ -29,22 +29,37 @@ Retourne tous les rounds pour une saison
         "cached": true/false
     },
     "result": {
-            "season": 2025,
-            "round_id": 0,
-            "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
-            "first_date": "unix date",
-            "end_date": "unix date"
-            "circuit": {
-                "name": "Albert Park Grand Prix Circuit",
-                "lat": "-37.8497",
-                "long": "144.968",
-                "locality": "Melbourne",
-                "country": "Australia"
+        "season": 2025,
+        "rounds": [
+            {
+                "round_id": 0,
+                "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
+                "first_date": "unix date",
+                "end_date": "unix date",
+                "circuit": {
+                    "name": "Albert Park Grand Prix Circuit",
+                    "lat": "-37.8497",
+                    "long": "144.968",
+                    "locality": "Melbourne",
+                    "country": "Australia"
+                }
+            },
+            {
+                "round_id": 1,
+                "name": "Formula 1 Gulf Air Bahrain Grand Prix 2025",
+                "first_date": "unix date",
+                "end_date": "unix date",
+                "circuit": {
+                    "name": "Bahrain International Circuit",
+                    "lat": "26.0325",
+                    "long": "50.5106",
+                    "locality": "Sakhir",
+                    "country": "Bahrain"
+                }
             }
-        }
-        
+        ]
     }
-    
+}
 ```
 
 ### GET /v1/seasons/:year/rounds/:round_id
@@ -53,45 +68,82 @@ Retourne les détails d'un round spécifique avec les sessions
 **Réponse**:
 ```json
 {
-            metadata: {
-                "date": "date unix" // date de mise à jour des données
-                "cached": true/false // a la réponse de l'api
-            },
-            "result": {
-                "season": 2025,
-                "round_id": 0,
-                "circuit": {
-                    "name": "Albert Park Grand Prix Circuit",
-                    "lat": "-37.8497",
-                    "long": "144.968",
-                    "locality": "Melbourne",
-                    "country": "Australia"
-                }
-                "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
-                "first_date": "date",
-                "end_date": "date",
-                "sessions": [
+    "metadata": {
+        "date": "date unix", // date de mise à jour des données
+        "cached": true/false // a la réponse de l'api
+    },
+    "result": {
+        "season": 2025,
+        "round_id": 0,
+        "circuit": {
+            "name": "Albert Park Grand Prix Circuit",
+            "lat": "-37.8497",
+            "long": "144.968",
+            "locality": "Melbourne",
+            "country": "Australia"
+        }
+        "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
+        "first_date": "date",
+        "end_date": "date",
+        "sessions": [
+            {
+                "type": "race", // ["test", "race", "sprint_race",
+                                 // "practice_1", "practice_2", "practice_3",
+                                 // "qualifying_1", "qualifying_2", "qualifying_3",
+                                 // "sprint_qualifying_1", "sprint_qualifying_2", "sprint_qualifying_3"]
+                "date": "unix date",
+                "total_laps": 57,        // Nombre de tours prévus pour la session
+                "completed_laps": 57,    // Nombre de tours complétés (peut être < total_laps si session en cours)
+                "results": [
                     {
-                        "race": {
-                            "type": "test", // ["test", "race", "sprint_race",
-                                                "practice_1", "practice_2", "practice_3", 
-                                                "qualyfing_1", "qualyfing_2, "qualyfing_3",
-                                                "sprint_qualyfing_1", "sprint_qualyfing_2, "sprint_qualyfing_3"] // unique
-                            "date": "unix date",
-                            "result": {
-                                "position": 1, // unique
-                                "driver_number": 4,
-                                "driver_name": "Lando Norris",
-                                "team": "McLaren",
-                                "laps": 57,
-                                "time": "1:42:04.304" // can also be DNF / DNS so string
-                                "points": 25
-                            }
-                        },
+                        "position": 1,
+                        "driver_number": 4,
+                        "driver_name": "Lando Norris",
+                        "team": "McLaren",
+                        "laps": 57,
+                        "time": "1:42:04.304",
+                        "points": 25
+                    },
+                    {
+                        "position": 2,
+                        "driver_number": 81,
+                        "driver_name": "Oscar Piastri",
+                        "team": "McLaren",
+                        "laps": 57,
+                        "time": "+3.251",
+                        "points": 18
+                    },
+                    {
+                        "position": 3,
+                        "driver_number": 16,
+                        "driver_name": "Charles Leclerc",
+                        "team": "Ferrari",
+                        "laps": 57,
+                        "time": "+8.928",
+                        "points": 15
+                    }
+                ]
+            },
+            {
+                "type": "qualifying_3",
+                "date": "unix date",
+                "total_laps": null,      // null pour les qualifications (basé sur le temps)
+                "completed_laps": null,
+                "results": [
+                    {
+                        "position": 1,
+                        "driver_number": 4,
+                        "driver_name": "Lando Norris",
+                        "team": "McLaren",
+                        "laps": 0,
+                        "time": "1:15.225",
+                        "points": 0
                     }
                 ]
             }
-        }
+        ]
+    }
+}
 
 ```
 
