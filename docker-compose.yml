@@ -43,7 +43,7 @@ services:
     container_name: willitbemax-data-scheduler
     environment:
       GRPC_PORT: 50051
-      MONGO_URI: mongodb://admin:password@mongo:27017/content
+      MONGO_URI: mongodb://admin:password@mongo:27017/content?authSource=admin
       REDIS_URI: redis://redis:6379
     ports:
       - "50051:50051"

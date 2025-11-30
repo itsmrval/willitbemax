@@ -200,8 +200,25 @@ Retourne toutes les saisons
                         "end_date": 1733587200,
                         "status": "in_progress",
                         "current_round": 3,
-                        "world_champion": null,
-                        "constructors_champion": null,
+                        "driver_standings": [
+                            {
+                                "position": 1,
+                                "driver_number": 4,
+                                "driver_name": "Lando Norris",
+                                "driver_code": "NOR",
+                                "team": "McLaren",
+                                "points": 78,
+                                "wins": 2
+                            }
+                        ],
+                        "constructor_standings": [
+                            {
+                                "position": 1,
+                                "team": "McLaren",
+                                "points": 150,
+                                "wins": 3
+                            }
+                        ],
                         "total_drivers": 20,
                         "total_teams": 10,
                     },
@@ -212,17 +229,25 @@ Retourne toutes les saisons
                         "end_date": 1701648000,
                         "status": "completed",
                         "current_round": 24,
-                        "world_champion": {
-                            "driver_number": 1,
-                            "driver_name": "Max Verstappen",
-                            "driver_code": "VER",
-                            "team": "Red Bull Racing",
-                            "points": 437
-                        },
-                        "constructors_champion": {
-                            "team": "McLaren",
-                            "points": 666
-                        },
+                        "driver_standings": [
+                            {
+                                "position": 1,
+                                "driver_number": 1,
+                                "driver_name": "Max Verstappen",
+                                "driver_code": "VER",
+                                "team": "Red Bull Racing",
+                                "points": 437,
+                                "wins": 9
+                            }
+                        ],
+                        "constructor_standings": [
+                            {
+                                "position": 1,
+                                "team": "McLaren",
+                                "points": 666,
+                                "wins": 6
+                            }
+                        ],
                         "total_drivers": 22,
                         "total_teams": 10,
                     }

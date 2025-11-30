@@ -27,16 +27,16 @@ func (h *SeasonsHandler) WriteSeasons(ctx context.Context, data *pb.SeasonsData)
 	var operations []interface{}
 	for _, season := range data.Seasons {
 		operations = append(operations, bson.M{
-			"year":                  season.Year,
-			"rounds":                season.Rounds,
-			"start_date":            season.StartDate,
-			"end_date":              season.EndDate,
-			"status":                season.Status,
-			"current_round":         season.CurrentRound,
-			"world_champion":        season.WorldChampion,
-			"constructors_champion": season.ConstructorsChampion,
-			"total_drivers":         season.TotalDrivers,
-			"total_teams":           season.TotalTeams,
+			"year":                   season.Year,
+			"rounds":                 season.Rounds,
+			"start_date":             season.StartDate,
+			"end_date":               season.EndDate,
+			"status":                 season.Status,
+			"current_round":          season.CurrentRound,
+			"driver_standings":       season.DriverStandings,
+			"constructor_standings":  season.ConstructorStandings,
+			"total_drivers":          season.TotalDrivers,
+			"total_teams":            season.TotalTeams,
 		})
 	}
 
@@ -105,6 +105,36 @@ func (h *SeasonsHandler) GetSeasons(ctx context.Context, filter *pb.SeasonsFilte
 			TotalDrivers: int32(doc["total_drivers"].(int64)),
 			TotalTeams:   int32(doc["total_teams"].(int64)),
 		}
+
+		if driverStandings, ok := doc["driver_standings"].(bson.A); ok {
+			for _, ds := range driverStandings {
+				if dsMap, ok := ds.(bson.M); ok {
+					season.DriverStandings = append(season.DriverStandings, &pb.DriverStanding{
+						Position:     int32(dsMap["position"].(int64)),
+						DriverNumber: int32(dsMap["driver_number"].(int64)),
+						DriverName:   dsMap["driver_name"].(string),
+						DriverCode:   dsMap["driver_code"].(string),
+						Team:         dsMap["team"].(string),
+						Points:       int32(dsMap["points"].(int64)),
+						Wins:         int32(dsMap["wins"].(int64)),
+					})
+				}
+			}
+		}
+
+		if constructorStandings, ok := doc["constructor_standings"].(bson.A); ok {
+			for _, cs := range constructorStandings {
+				if csMap, ok := cs.(bson.M); ok {
+					season.ConstructorStandings = append(season.ConstructorStandings, &pb.ConstructorStanding{
+						Position: int32(csMap["position"].(int64)),
+						Team:     csMap["team"].(string),
+						Points:   int32(csMap["points"].(int64)),
+						Wins:     int32(csMap["wins"].(int64)),
+					})
+				}
+			}
+		}
+
 		seasons = append(seasons, season)
 	}
 

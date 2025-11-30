@@ -27,7 +27,19 @@ async def fetch_seasons():
         seasons_data = await ergast.fetch_seasons()
         logger.info(f"Fetched {len(seasons_data)} seasons")
 
-        proto_seasons = ergast.to_proto(seasons_data)
+        details_map = {}
+        for season_item in seasons_data:
+            year = int(season_item["season"])
+            try:
+                logger.info(f"Fetching details for season {year}")
+                details = await ergast.fetch_season_details(year)
+                details_map[year] = details
+            except Exception as e:
+                logger.warning(f"Failed to fetch details for season {year}: {e}")
+
+        logger.info(f"Fetched details for {len(details_map)} seasons")
+
+        proto_seasons = ergast.to_proto(seasons_data, details_map)
         response = scheduler.write_seasons(proto_seasons)
 
         if response.success:

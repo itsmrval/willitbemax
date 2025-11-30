@@ -18,6 +18,23 @@ protobuf/
 
 #### Season
 ```protobuf
+message DriverStanding {
+  int32 position = 1;
+  int32 driver_number = 2;
+  string driver_name = 3;
+  string driver_code = 4;      // ex: "VER", "NOR"
+  string team = 5;
+  int32 points = 6;
+  int32 wins = 7;
+}
+
+message ConstructorStanding {
+  int32 position = 1;
+  string team = 2;
+  int32 points = 3;
+  int32 wins = 4;
+}
+
 message Season {
   int32 year = 1;
   int32 rounds = 2;
@@ -25,23 +42,10 @@ message Season {
   int64 end_date = 4;          // Unix timestamp
   string status = 5;           // "in_progress", "completed", "upcoming"
   int32 current_round = 6;
-  Champion world_champion = 7;
-  Constructor constructors_champion = 8;
+  repeated DriverStanding driver_standings = 7;
+  repeated ConstructorStanding constructor_standings = 8;
   int32 total_drivers = 9;
   int32 total_teams = 10;
-}
-
-message Champion {
-  int32 driver_number = 1;
-  string driver_name = 2;
-  string driver_code = 3;      // ex: "VER", "NOR"
-  string team = 4;
-  int32 points = 5;
-}
-
-message Constructor {
-  string team = 1;
-  int32 points = 2;
 }
 ```
 
@@ -90,29 +94,6 @@ message Result {
 }
 ```
 
-#### Driver Standing
-```protobuf
-message DriverStanding {
-  int32 position = 1;
-  int32 number = 2;
-  string name = 3;
-  string nationality = 4;
-  string team = 5;
-  int32 points = 6;
-  int32 wins = 7;
-  int32 podiums = 8;
-  int32 pole_positions = 9;
-  int32 fastest_laps = 10;
-  int32 dnf_count = 11;
-  int32 races_completed = 12;
-}
-
-message StandingsData {
-  int32 season = 1;
-  int32 last_round = 2;
-  repeated DriverStanding standings = 3;
-}
-```
 
 #### Metadata
 ```protobuf
