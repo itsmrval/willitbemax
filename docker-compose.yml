@@ -1,0 +1,86 @@
+services:
+  mongo:
+    image: mongo:7-jammy
+    container_name: willitbemax-mongo
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: password
+      MONGO_INITDB_DATABASE: content
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    networks:
+      - willitbemax-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+
+  redis:
+    image: redis:7-alpine
+    container_name: willitbemax-redis
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - willitbemax-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  data_scheduler:
+    build:
+      context: .
+      dockerfile: data_scheduler/Dockerfile
+    container_name: willitbemax-data-scheduler
+    environment:
+      GRPC_PORT: 50051
+      MONGO_URI: mongodb://admin:password@mongo:27017/content
+      REDIS_URI: redis://redis:6379
+    ports:
+      - "50051:50051"
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - willitbemax-network
+    restart: unless-stopped
+
+  fetcher_service:
+    build:
+      context: .
+      dockerfile: fetcher_service/Dockerfile
+    container_name: willitbemax-fetcher-service
+    environment:
+      DATA_SCHEDULER_URI: data_scheduler:50051
+      ERGAST_API_URL: https://api.jolpi.ca/ergast/f1
+      LOG_LEVEL: INFO
+    ports:
+      - "8082:8082"
+    depends_on:
+      - data_scheduler
+    networks:
+      - willitbemax-network
+    restart: unless-stopped
+
+networks:
+  willitbemax-network:
+    driver: bridge
+
+volumes:
+  mongo_data:
+    driver: local
+  mongo_config:
+    driver: local
+  redis_data:
+    driver: local

@@ -1,16 +1,41 @@
-FROM golang:1.23-alpine
+FROM golang:1.24-alpine AS proto-builder
 
-WORKDIR /app
+RUN apk add --no-cache protobuf
+RUN go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+RUN go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
-RUN apk add --no-cache git
+WORKDIR /app/protobuf
 
-COPY go.mod go.sum ./
-RUN go mod download
+COPY protobuf/*.proto ./
+COPY protobuf/go.mod ./
 
-COPY . .
+RUN mkdir -p gen/go
+RUN protoc --go_out=gen/go --go-grpc_out=gen/go \
+    --go_opt=paths=source_relative \
+    --go-grpc_opt=paths=source_relative \
+    *.proto
 
+FROM golang:1.24-alpine AS app-builder
+
+WORKDIR /app/data_scheduler
+
+COPY --from=proto-builder /app/protobuf /app/protobuf
+
+COPY data_scheduler/go.mod ./
+COPY data_scheduler/cmd ./cmd
+COPY data_scheduler/internal ./internal
+
+RUN go mod tidy
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server ./cmd/main.go
+
+FROM alpine:latest
+
+RUN apk --no-cache add ca-certificates
+
+WORKDIR /root/
+
+COPY --from=app-builder /app/server .
 
 EXPOSE 50051
 
-CMD ["/app/server"]
+CMD ["./server"]

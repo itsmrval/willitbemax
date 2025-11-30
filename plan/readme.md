@@ -76,7 +76,6 @@ willitbemax/
 │
 ├── fetcher_service/             # Service de récupération (Python)
 │   ├── src/
-│   │   ├── __init__.py
 │   │   ├── main.py              # Point d'entrée FastAPI/Flask
 │   │   ├── scrapers/
 │   │   │   ├── f1_website.py    # Scraper site F1

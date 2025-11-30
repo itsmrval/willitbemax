@@ -139,3 +139,15 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+.venv/
+
+# Docker volumes
+mongo_data/
+redis_data/
+mongo_config/
+
+# Generated protobuf
+protobuf/gen/
+protobuf/*.pb.go
+fetcher_service/*_pb2.py
+fetcher_service/*_pb2_grpc.py

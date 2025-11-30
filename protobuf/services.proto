@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package content;
+
+import "content.proto";
+
+option go_package = "github.com/willitbemax/protobuf/gen/go;content";
+
+message SeasonsFilter {
+  optional int32 year = 1;
+  optional string status = 2;
+}
+
+message SeasonsResponse {
+  Metadata metadata = 1;
+  SeasonsData data = 2;
+}
+
+message WriteResponse {
+  bool success = 1;
+  string message = 2;
+  int32 records_affected = 3;
+}
+
+service DataSchedulerService {
+  rpc WriteSeasons(SeasonsData) returns (WriteResponse);
+  rpc GetSeasons(SeasonsFilter) returns (SeasonsResponse);
+}

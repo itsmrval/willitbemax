@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.log
+.claude
+demo/
+plan/
+*.md
+Makefile
+node_modules
+.DS_Store

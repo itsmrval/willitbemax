@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package content;
+
+option go_package = "github.com/willitbemax/protobuf/gen/go;content";
+
+message Champion {
+  int32 driver_number = 1;
+  string driver_name = 2;
+  string driver_code = 3;
+  string team = 4;
+  int32 points = 5;
+}
+
+message Constructor {
+  string team = 1;
+  int32 points = 2;
+}
+
+message Season {
+  int32 year = 1;
+  int32 rounds = 2;
+  int64 start_date = 3;
+  int64 end_date = 4;
+  string status = 5;
+  int32 current_round = 6;
+  optional Champion world_champion = 7;
+  optional Constructor constructors_champion = 8;
+  int32 total_drivers = 9;
+  int32 total_teams = 10;
+}
+
+message SeasonsData {
+  repeated Season seasons = 1;
+}
+
+message Metadata {
+  int64 date = 1;
+  bool cached = 2;
+}
