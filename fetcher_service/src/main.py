@@ -1,6 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 import logging
+import asyncio
 from datetime import datetime
 
 from .config import settings
@@ -28,14 +29,24 @@ async def fetch_seasons():
         logger.info(f"Fetched {len(seasons_data)} seasons")
 
         details_map = {}
+        failed_seasons = []
+
         for season_item in seasons_data:
             year = int(season_item["season"])
             try:
                 logger.info(f"Fetching details for season {year}")
                 details = await ergast.fetch_season_details(year)
                 details_map[year] = details
+                await asyncio.sleep(1)
             except Exception as e:
-                logger.warning(f"Failed to fetch details for season {year}: {e}")
+                logger.error(f"Failed to fetch details for season {year}: {e}")
+                failed_seasons.append(year)
+
+        if failed_seasons:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to fetch details for seasons: {failed_seasons}"
+            )
 
         logger.info(f"Fetched details for {len(details_map)} seasons")
 
@@ -53,6 +64,8 @@ async def fetch_seasons():
         else:
             raise HTTPException(status_code=500, detail=response.message)
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Fetch error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

@@ -12,6 +12,29 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 )
 
+func getInt32(m bson.M, key string) int32 {
+	if val, ok := m[key]; ok && val != nil {
+		switch v := val.(type) {
+		case int32:
+			return v
+		case int64:
+			return int32(v)
+		case int:
+			return int32(v)
+		}
+	}
+	return 0
+}
+
+func getString(m bson.M, key string) string {
+	if val, ok := m[key]; ok && val != nil {
+		if str, ok := val.(string); ok {
+			return str
+		}
+	}
+	return ""
+}
+
 type SeasonsHandler struct {
 	db    *database.MongoDB
 	cache *cache.RedisClient
@@ -26,6 +49,29 @@ func (h *SeasonsHandler) WriteSeasons(ctx context.Context, data *pb.SeasonsData)
 
 	var operations []interface{}
 	for _, season := range data.Seasons {
+		var driverStandings []bson.M
+		for _, ds := range season.DriverStandings {
+			driverStandings = append(driverStandings, bson.M{
+				"position":      ds.Position,
+				"driver_number": ds.DriverNumber,
+				"driver_name":   ds.DriverName,
+				"driver_code":   ds.DriverCode,
+				"team":          ds.Team,
+				"points":        ds.Points,
+				"wins":          ds.Wins,
+			})
+		}
+
+		var constructorStandings []bson.M
+		for _, cs := range season.ConstructorStandings {
+			constructorStandings = append(constructorStandings, bson.M{
+				"position": cs.Position,
+				"team":     cs.Team,
+				"points":   cs.Points,
+				"wins":     cs.Wins,
+			})
+		}
+
 		operations = append(operations, bson.M{
 			"year":                   season.Year,
 			"rounds":                 season.Rounds,
@@ -33,8 +79,8 @@ func (h *SeasonsHandler) WriteSeasons(ctx context.Context, data *pb.SeasonsData)
 			"end_date":               season.EndDate,
 			"status":                 season.Status,
 			"current_round":          season.CurrentRound,
-			"driver_standings":       season.DriverStandings,
-			"constructor_standings":  season.ConstructorStandings,
+			"driver_standings":       driverStandings,
+			"constructor_standings":  constructorStandings,
 			"total_drivers":          season.TotalDrivers,
 			"total_teams":            season.TotalTeams,
 		})
@@ -67,7 +113,7 @@ func (h *SeasonsHandler) GetSeasons(ctx context.Context, filter *pb.SeasonsFilte
 		var data pb.SeasonsData
 		if json.Unmarshal([]byte(cached), &data) == nil {
 			return &pb.SeasonsResponse{
-				Metadata: &pb.Metadata{Date: time.Now().Unix(), Cached: true},
+				Metadata: &pb.Metadata{Date: int32(time.Now().Unix()), Cached: true},
 				Data:     &data,
 			}, nil
 		}
@@ -96,27 +142,29 @@ func (h *SeasonsHandler) GetSeasons(ctx context.Context, filter *pb.SeasonsFilte
 		}
 
 		season := &pb.Season{
-			Year:         int32(doc["year"].(int64)),
-			Rounds:       int32(doc["rounds"].(int64)),
-			StartDate:    doc["start_date"].(int64),
-			EndDate:      doc["end_date"].(int64),
-			Status:       doc["status"].(string),
-			CurrentRound: int32(doc["current_round"].(int64)),
-			TotalDrivers: int32(doc["total_drivers"].(int64)),
-			TotalTeams:   int32(doc["total_teams"].(int64)),
+			Year:                 getInt32(doc, "year"),
+			Rounds:               getInt32(doc, "rounds"),
+			StartDate:            getInt32(doc, "start_date"),
+			EndDate:              getInt32(doc, "end_date"),
+			Status:               getString(doc, "status"),
+			CurrentRound:         getInt32(doc, "current_round"),
+			TotalDrivers:         getInt32(doc, "total_drivers"),
+			TotalTeams:           getInt32(doc, "total_teams"),
+			DriverStandings:      []*pb.DriverStanding{},
+			ConstructorStandings: []*pb.ConstructorStanding{},
 		}
 
 		if driverStandings, ok := doc["driver_standings"].(bson.A); ok {
 			for _, ds := range driverStandings {
 				if dsMap, ok := ds.(bson.M); ok {
 					season.DriverStandings = append(season.DriverStandings, &pb.DriverStanding{
-						Position:     int32(dsMap["position"].(int64)),
-						DriverNumber: int32(dsMap["driver_number"].(int64)),
-						DriverName:   dsMap["driver_name"].(string),
-						DriverCode:   dsMap["driver_code"].(string),
-						Team:         dsMap["team"].(string),
-						Points:       int32(dsMap["points"].(int64)),
-						Wins:         int32(dsMap["wins"].(int64)),
+						Position:     getInt32(dsMap, "position"),
+						DriverNumber: getInt32(dsMap, "driver_number"),
+						DriverName:   getString(dsMap, "driver_name"),
+						DriverCode:   getString(dsMap, "driver_code"),
+						Team:         getString(dsMap, "team"),
+						Points:       getInt32(dsMap, "points"),
+						Wins:         getInt32(dsMap, "wins"),
 					})
 				}
 			}
@@ -126,10 +174,10 @@ func (h *SeasonsHandler) GetSeasons(ctx context.Context, filter *pb.SeasonsFilte
 			for _, cs := range constructorStandings {
 				if csMap, ok := cs.(bson.M); ok {
 					season.ConstructorStandings = append(season.ConstructorStandings, &pb.ConstructorStanding{
-						Position: int32(csMap["position"].(int64)),
-						Team:     csMap["team"].(string),
-						Points:   int32(csMap["points"].(int64)),
-						Wins:     int32(csMap["wins"].(int64)),
+						Position: getInt32(csMap, "position"),
+						Team:     getString(csMap, "team"),
+						Points:   getInt32(csMap, "points"),
+						Wins:     getInt32(csMap, "wins"),
 					})
 				}
 			}
@@ -144,7 +192,7 @@ func (h *SeasonsHandler) GetSeasons(ctx context.Context, filter *pb.SeasonsFilte
 	h.cache.Set(ctx, cacheKey, jsonData, time.Hour)
 
 	return &pb.SeasonsResponse{
-		Metadata: &pb.Metadata{Date: time.Now().Unix(), Cached: false},
+		Metadata: &pb.Metadata{Date: int32(time.Now().Unix()), Cached: false},
 		Data:     data,
 	}, nil
 }

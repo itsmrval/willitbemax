@@ -15,6 +15,7 @@
 - **Base de données**: MongoDB (stockage principal)
 - **Cache**: Redis (couche de cache)
 - **Communication**: gRPC (interne), HTTP/REST (public)
+- **Reverse Proxy**: Traefik (point d'entrée unique HTTP)
 - **Scraping**: BeautifulSoup
 
 ## Flux de données
@@ -29,10 +30,17 @@ MongoDB + Redis
     ↑ gRPC
 content_api (Serveur HTTP)
     ↓
+Traefik (Port 80)
+    ↓
 Utilisateurs finaux
 
 scheduler_api → déclenche → fetcher_service (via HTTP/gRPC)
 ```
+
+## APIs
+
+- **content_api**: http://localhost/content/v1/seasons
+- **fetcher_service**: http://localhost/fetcher/v1/fetch/seasons
 
 ---
 
@@ -46,13 +54,16 @@ willitbemax/
 │   ├── content.proto            # Messages pour les données
 │   └── services.proto           # Définitions des services gRPC
 │
-├── content_api/                 # Service API content (Go)
+├── content_api/                 # Service API content (Go) ✅
 │   ├── cmd/
 │   │   └── main.go
 │   ├── internal/
+│   │   ├── config/              # Configuration
 │   │   ├── handlers/            # Handlers HTTP
 │   │   ├── grpc/                # Client gRPC vers data_scheduler
+│   │   ├── middleware/          # Middleware (logging, errors)
 │   │   └── models/              # Modèles de données
+│   ├── Dockerfile
 │   └── go.mod
 │
 ├── data_scheduler/               # Service de gestion DB (Go)
@@ -93,4 +104,5 @@ willitbemax/
 
 **HTTP**
 - **scheduler_api** → **fetcher_service** (trigger)
-- Clients externes → **content_api** (API publique)
+- Clients externes → **Traefik** → **content_api** (via /content/v1)
+- Clients externes → **Traefik** → **fetcher_service** (via /fetcher/v1)

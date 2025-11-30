@@ -18,22 +18,33 @@ class ErgastClient:
             seasons = response.json()["MRData"]["SeasonTable"]["Seasons"]
             return [s for s in seasons if int(s["season"]) >= start_year]
 
-    async def fetch_season_details(self, year: int) -> Dict:
+    async def _fetch_with_retry(self, client: httpx.AsyncClient, url: str, max_retries: int = 3):
+        for attempt in range(max_retries):
+            try:
+                response = await client.get(url)
+                response.raise_for_status()
+                return response
+            except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 and attempt < max_retries - 1:
+                    wait_time = 2 ** (attempt + 1)
+                    logger.warning(f"Rate limited on {url}, retrying in {wait_time}s (attempt {attempt + 1}/{max_retries})")
+                    await asyncio.sleep(wait_time)
+                else:
+                    raise
+
+    async def fetch_season_details(self, year: int, max_retries: int = 3) -> Dict:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            driver_response = await client.get(f"{self.url}/{year}/driverStandings.json")
-            driver_response.raise_for_status()
+            driver_response = await self._fetch_with_retry(client, f"{self.url}/{year}/driverStandings.json", max_retries)
             driver_data = driver_response.json()["MRData"]["StandingsTable"]["StandingsLists"]
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
 
-            constructor_response = await client.get(f"{self.url}/{year}/constructorStandings.json")
-            constructor_response.raise_for_status()
+            constructor_response = await self._fetch_with_retry(client, f"{self.url}/{year}/constructorStandings.json", max_retries)
             constructor_data = constructor_response.json()["MRData"]["StandingsTable"]["StandingsLists"]
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
 
-            races_response = await client.get(f"{self.url}/{year}.json")
-            races_response.raise_for_status()
+            races_response = await self._fetch_with_retry(client, f"{self.url}/{year}.json", max_retries)
             races_data = races_response.json()["MRData"]["RaceTable"]["Races"]
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.5)
 
             details = {
                 "driver_standings": [],
@@ -47,27 +58,29 @@ class ErgastClient:
             }
 
             if driver_data and len(driver_data) > 0:
-                standings = driver_data[0]["DriverStandings"]
+                standings = driver_data[0].get("DriverStandings", [])
                 details["total_drivers"] = len(standings)
                 for standing in standings:
-                    driver = standing["Driver"]
+                    driver = standing.get("Driver", {})
+                    constructors = standing.get("Constructors", [])
                     details["driver_standings"].append({
-                        "position": int(standing["position"]),
-                        "driver_name": f"{driver['givenName']} {driver['familyName']}",
+                        "position": int(standing.get("position", 0)),
+                        "driver_name": f"{driver.get('givenName', '')} {driver.get('familyName', '')}".strip(),
                         "driver_code": driver.get("code", ""),
                         "driver_number": int(driver.get("permanentNumber", 0)) if driver.get("permanentNumber") else 0,
-                        "team": standing["Constructors"][0]["name"] if standing.get("Constructors") else "",
+                        "team": constructors[0].get("name", "") if constructors else "",
                         "points": int(float(standing.get("points", 0))),
                         "wins": int(standing.get("wins", 0))
                     })
 
             if constructor_data and len(constructor_data) > 0:
-                standings = constructor_data[0]["ConstructorStandings"]
+                standings = constructor_data[0].get("ConstructorStandings", [])
                 details["total_teams"] = len(standings)
                 for standing in standings:
+                    constructor = standing.get("Constructor", {})
                     details["constructor_standings"].append({
-                        "position": int(standing["position"]),
-                        "team": standing["Constructor"]["name"],
+                        "position": int(standing.get("position", 0)),
+                        "team": constructor.get("name", ""),
                         "points": int(float(standing.get("points", 0))),
                         "wins": int(standing.get("wins", 0))
                     })

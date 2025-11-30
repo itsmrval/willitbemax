@@ -24,8 +24,8 @@ message ConstructorStanding {
 message Season {
   int32 year = 1;
   int32 rounds = 2;
-  int64 start_date = 3;
-  int64 end_date = 4;
+  int32 start_date = 3;
+  int32 end_date = 4;
   string status = 5;
   int32 current_round = 6;
   repeated DriverStanding driver_standings = 7;
@@ -39,6 +39,6 @@ message SeasonsData {
 }
 
 message Metadata {
-  int64 date = 1;
+  int32 date = 1;
   bool cached = 2;
 }
