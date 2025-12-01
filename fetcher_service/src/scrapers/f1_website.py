@@ -117,7 +117,6 @@ class F1WebsiteClient:
         return unique_rounds
 
     def _extract_round_name(self, soup: BeautifulSoup, season: int) -> Optional[str]:
-        """Extract the proper Grand Prix name from the race page's JSON-LD"""
         scripts = soup.find_all('script', type='application/ld+json')
         for script in scripts:
             try:
@@ -126,20 +125,10 @@ class F1WebsiteClient:
                 if isinstance(data, dict) and data.get('@type') == 'SportsEvent':
                     name = data.get('name', '')
                     if name:
-                        # Remove the year from the end if present
                         name = re.sub(rf'\s*{season}$', '', name).strip()
                         return name
             except Exception as e:
                 logger.debug(f"Failed to parse JSON-LD for round name: {e}")
-
-        # Fallback: try to find H1 tag
-        h1 = soup.find('h1')
-        if h1:
-            name = h1.text.strip()
-            if name:
-                # Remove the year from the end if present
-                name = re.sub(rf'\s*{season}$', '', name).strip()
-                return name
 
         return None
 
@@ -148,7 +137,6 @@ class F1WebsiteClient:
         html = await self._fetch_with_retry(client, url)
         soup = BeautifulSoup(html, 'html.parser')
 
-        # Extract the proper Grand Prix name from this page's JSON-LD
         round_name = self._extract_round_name(soup, season)
         if round_name:
             metadata['name'] = round_name
@@ -440,10 +428,16 @@ class F1WebsiteClient:
                     driver_name = driver_name_raw
 
                 team = cells[3].text.strip()
-                time = cells[4].text.strip()
 
-                laps_text = cells[5].text.strip() if len(cells) > 5 else '0'
-                laps = int(re.search(r'\d+', laps_text).group()) if re.search(r'\d+', laps_text) else 0
+                cell_4_text = cells[4].text.strip()
+                is_race = bool(re.match(r'^\d+$', cell_4_text))
+
+                if is_race:
+                    laps = int(cell_4_text) if cell_4_text.isdigit() else 0
+                    time = cells[5].text.strip() if len(cells) > 5 else ''
+                else:
+                    time = cell_4_text
+                    laps = 0
 
                 results.append({
                     'position': position,
