@@ -3,9 +3,17 @@ import base64
 import logging
 import asyncio
 import re
+import os
+import json
+import time
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 from datetime import datetime
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 logger = logging.getLogger(__name__)
 
@@ -15,20 +23,81 @@ class F1WebsiteClient:
         self.timeout = 30.0
         self.ergast = ergast_client
 
+    def _create_selenium_driver(self):
+        selenium_url = os.getenv('SELENIUM_URL', 'http://localhost:4444')
+        chrome_options = Options()
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        return webdriver.Remote(command_executor=selenium_url, options=chrome_options)
+
+    def _fetch_schedule_with_selenium(self, season: int) -> List[Dict]:
+        url = f"{self.base_url}/en/racing/{season}"
+        driver = self._create_selenium_driver()
+
+        try:
+            logger.info(f"Fetching schedule page with Selenium: {url}")
+            driver.get(url)
+
+            def wait_for_all_rounds(driver):
+                script = f"""
+                const cards = document.querySelectorAll('a[href*="/racing/{season}/"]');
+                const roundTexts = Array.from(cards).filter(card =>
+                    card.textContent.match(/ROUND\\s+\\d+/i)
+                );
+                return roundTexts.length;
+                """
+                count = driver.execute_script(script)
+                return count >= 24
+
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+
+            WebDriverWait(driver, 20).until(wait_for_all_rounds)
+
+            rounds_data = driver.execute_script(f"""
+                const cards = document.querySelectorAll('a[href*="/racing/{season}/"]');
+                const roundsMap = new Map();
+
+                cards.forEach(card => {{
+                    const href = card.getAttribute('href') || '';
+                    const text = card.textContent;
+                    const roundMatch = text.match(/ROUND\\s+(\\d+)/i);
+
+                    if (!roundMatch) return;
+                    if (!href.includes('/racing/{season}/') || (href.match(/\\//g) || []).length < 4) return;
+
+                    const location = href.split('/').pop();
+                    if (!location || location === '{season}') return;
+
+                    const roundId = parseInt(roundMatch[1]);
+                    if (roundsMap.has(roundId)) return;
+
+                    const name = location.replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
+
+                    roundsMap.set(roundId, {{
+                        round_id: roundId,
+                        location: location,
+                        name: name
+                    }});
+                }});
+
+                return Array.from(roundsMap.values());
+            """)
+
+            rounds_data.sort(key=lambda x: x['round_id'])
+            return rounds_data
+        finally:
+            driver.quit()
+
     async def fetch_rounds_for_season(self, season: int, specific_round_id: int = None) -> List[Dict]:
-        schedule_url = f"{self.base_url}/en/racing/{season}"
+        rounds_metadata = await asyncio.to_thread(self._fetch_schedule_with_selenium, season)
+
+        if specific_round_id is not None:
+            rounds_metadata = [m for m in rounds_metadata if m['round_id'] == specific_round_id]
+            if not rounds_metadata:
+                logger.error(f"Round {specific_round_id} not found in season {season}")
+                return []
 
         async with httpx.AsyncClient(timeout=self.timeout, follow_redirects=True) as client:
-            schedule_html = await self._fetch_with_retry(client, schedule_url)
-
-            rounds_metadata = self._parse_schedule_page(schedule_html, season)
-
-            if specific_round_id is not None:
-                rounds_metadata = [m for m in rounds_metadata if m['round_id'] == specific_round_id]
-                if not rounds_metadata:
-                    logger.error(f"Round {specific_round_id} not found in season {season}")
-                    return []
-
             all_rounds = []
             for metadata in rounds_metadata:
                 try:
@@ -41,95 +110,14 @@ class F1WebsiteClient:
 
             return all_rounds
 
-    def _parse_schedule_page(self, html: str, season: int) -> List[Dict]:
-        soup = BeautifulSoup(html, 'html.parser')
-        rounds = []
-
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
-            try:
-                import json
-                data = json.loads(script.string)
-                if isinstance(data, dict) and data.get('@type') == 'SportsEvent':
-                    name = data.get('name', '')
-                    if name:
-                        name = re.sub(r'ROUND\s*\d+\s*', '', name, flags=re.IGNORECASE).strip()
-                        name = re.sub(r'Chequered\s*Flag\s*', '', name, flags=re.IGNORECASE).strip()
-                        name = re.sub(r'\d{1,2}\s*-\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', '', name, flags=re.IGNORECASE).strip()
-
-                    location_data = data.get('location', {})
-                    if isinstance(location_data, dict):
-                        address = location_data.get('address', {})
-                        locality = address.get('addressLocality', '').lower().replace(' ', '-')
-                        if locality and name:
-                            rounds.append({
-                                'round_id': len(rounds),
-                                'location': locality,
-                                'name': name
-                            })
-                elif isinstance(data, list):
-                    for item in data:
-                        if item.get('@type') == 'SportsEvent':
-                            name = item.get('name', '')
-                            if name:
-                                name = re.sub(r'ROUND\s*\d+\s*', '', name, flags=re.IGNORECASE).strip()
-                                name = re.sub(r'Chequered\s*Flag\s*', '', name, flags=re.IGNORECASE).strip()
-                                name = re.sub(r'\d{1,2}\s*-\s*\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', '', name, flags=re.IGNORECASE).strip()
-
-                            location_data = item.get('location', {})
-                            if isinstance(location_data, dict):
-                                address = location_data.get('address', {})
-                                locality = address.get('addressLocality', '').lower().replace(' ', '-')
-                                if locality and name:
-                                    rounds.append({
-                                        'round_id': len(rounds),
-                                        'location': locality,
-                                        'name': name
-                                    })
-            except Exception as e:
-                logger.debug(f"Failed to parse ld+json: {e}")
-                pass
-
-        if not rounds:
-            article_cards = soup.select('a[href*="/racing/"]')
-            for idx, card in enumerate(article_cards):
-                href = card.get('href', '')
-                if f'/racing/{season}/' in href and href.count('/') >= 4:
-                    location = href.split('/')[-1]
-                    if location and location != str(season):
-                        name_elem = card.select_one('[class*="title"], [class*="name"], h2, h3, h4, h5, span')
-                        name = name_elem.text.strip() if name_elem else f"Round {idx + 1}"
-                        if name and not name.isdigit():
-                            rounds.append({
-                                'round_id': idx,
-                                'location': location,
-                                'name': name
-                            })
-
-        seen = set()
-        unique_rounds = []
-        for idx, r in enumerate(rounds):
-            if r['location'] not in seen:
-                seen.add(r['location'])
-                r['round_id'] = idx
-                unique_rounds.append(r)
-
-        return unique_rounds
-
     def _extract_round_name(self, soup: BeautifulSoup, season: int) -> Optional[str]:
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
+        for script in soup.find_all('script', type='application/ld+json'):
             try:
-                import json
                 data = json.loads(script.string)
-                if isinstance(data, dict) and data.get('@type') == 'SportsEvent':
-                    name = data.get('name', '')
-                    if name:
-                        name = re.sub(rf'\s*{season}$', '', name).strip()
-                        return name
-            except Exception as e:
-                logger.debug(f"Failed to parse JSON-LD for round name: {e}")
-
+                if data.get('@type') == 'SportsEvent' and data.get('name'):
+                    return re.sub(rf'\s*{season}$', '', data['name']).strip()
+            except:
+                pass
         return None
 
     async def _fetch_round_details(self, client: httpx.AsyncClient, season: int, metadata: Dict) -> Dict:
@@ -144,8 +132,7 @@ class F1WebsiteClient:
         circuit = await self._extract_circuit_info(client, soup)
 
         if self.ergast:
-            ergast_round = metadata['round_id'] + 1
-            ergast_circuit = await self.ergast.fetch_circuit_for_round(season, ergast_round)
+            ergast_circuit = await self.ergast.fetch_circuit_for_round(season, metadata['round_id'])
             if ergast_circuit:
                 circuit['lat'] = ergast_circuit.get('lat', '0')
                 circuit['long'] = ergast_circuit.get('long', '0')
@@ -153,8 +140,6 @@ class F1WebsiteClient:
                     circuit['locality'] = ergast_circuit['locality']
                 if not circuit['country'] and ergast_circuit.get('country'):
                     circuit['country'] = ergast_circuit['country']
-
-        logger.info(f"Final circuit data: name={circuit['name']}, locality={circuit['locality']}, country={circuit['country']}, lat={circuit['lat']}, long={circuit['long']}, laps={circuit['laps']}")
 
         sessions = await self._extract_sessions(client, season, metadata['location'], soup)
 
@@ -186,47 +171,29 @@ class F1WebsiteClient:
         }
 
     async def _extract_circuit_info(self, client: httpx.AsyncClient, soup: BeautifulSoup) -> Dict:
-        circuit = {
-            'name': '',
-            'locality': '',
-            'country': '',
-            'lat': '0',
-            'long': '0',
-            'laps': 0,
-            'image_base64': ''
-        }
+        circuit = {'name': '', 'locality': '', 'country': '', 'lat': '0', 'long': '0', 'laps': 0, 'image_base64': ''}
 
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
+        for script in soup.find_all('script', type='application/ld+json'):
             try:
-                import json
                 data = json.loads(script.string)
-                if isinstance(data, dict) and data.get('@type') == 'SportsEvent':
+                if data.get('@type') == 'SportsEvent':
                     location = data.get('location', {})
-                    if isinstance(location, dict):
-                        name = location.get('name', '')
-                        if name and not circuit['name']:
-                            circuit['name'] = name
+                    if not circuit['name'] and location.get('name'):
+                        circuit['name'] = location['name']
 
-                        address = location.get('address', {})
-                        if isinstance(address, dict):
-                            locality = address.get('addressLocality', '')
-                            country = address.get('addressCountry', '')
-                            if locality:
-                                circuit['locality'] = locality
-                            if country:
-                                circuit['country'] = country
+                    address = location.get('address', {})
+                    if address.get('addressLocality'):
+                        circuit['locality'] = address['addressLocality']
+                    if address.get('addressCountry'):
+                        circuit['country'] = address['addressCountry']
 
-                        geo = location.get('geo', {})
-                        if isinstance(geo, dict):
-                            lat = geo.get('latitude')
-                            lon = geo.get('longitude')
-                            if lat and lat != 0:
-                                circuit['lat'] = str(lat)
-                            if lon and lon != 0:
-                                circuit['long'] = str(lon)
-            except Exception as e:
-                logger.debug(f"Failed to parse ld+json for circuit: {e}")
+                    geo = location.get('geo', {})
+                    if geo.get('latitude') and geo['latitude'] != 0:
+                        circuit['lat'] = str(geo['latitude'])
+                    if geo.get('longitude') and geo['longitude'] != 0:
+                        circuit['long'] = str(geo['longitude'])
+            except:
+                pass
 
         if not circuit['name']:
             circuit_elem = soup.find(text=re.compile(r'Circuit', re.IGNORECASE))
@@ -234,22 +201,17 @@ class F1WebsiteClient:
                 circuit['name'] = circuit_elem.strip()
 
         img = soup.select_one('img[src*="Circuit"], img[src*="circuit"], img[alt*="circuit"]')
-        if img:
-            image_url = img.get('src', '')
-            if image_url:
-                if not image_url.startswith('http'):
-                    image_url = self.base_url + image_url
-                try:
-                    circuit['image_base64'] = await self._download_image_as_base64(client, image_url)
-                except Exception as e:
-                    logger.warning(f"Failed to download circuit image: {e}")
+        if img and img.get('src'):
+            image_url = img['src'] if img['src'].startswith('http') else self.base_url + img['src']
+            try:
+                circuit['image_base64'] = await self._download_image_as_base64(client, image_url)
+            except:
+                pass
 
-        stats = soup.find_all(text=re.compile(r'\d+\s*laps', re.IGNORECASE))
-        for stat in stats:
-            match = re.search(r'(\d+)\s*laps', stat, re.IGNORECASE)
-            if match:
+        dt_elem = soup.find('dt', text=re.compile(r'Number\s+of\s+Laps', re.IGNORECASE))
+        if dt_elem and (dd_elem := dt_elem.find_next_sibling('dd')):
+            if match := re.search(r'(\d+)', dd_elem.get_text().strip()):
                 circuit['laps'] = int(match.group(1))
-                break
 
         if not circuit['name'] and not circuit['laps']:
             raise Exception("Failed to extract circuit information")
@@ -262,38 +224,82 @@ class F1WebsiteClient:
         return base64.b64encode(response.content).decode('utf-8')
 
     def _extract_weekend_dates(self, soup: BeautifulSoup, season: int) -> tuple:
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
+        for script in soup.find_all('script', type='application/ld+json'):
             try:
-                import json
                 data = json.loads(script.string)
-                if isinstance(data, dict) and data.get('@type') == 'SportsEvent':
-                    start_date = data.get('startDate')
-                    end_date = data.get('endDate')
-                    if start_date and end_date:
-                        start_dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                        end_dt = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
-                        return int(start_dt.timestamp()), int(end_dt.timestamp())
+                if data.get('@type') == 'SportsEvent' and data.get('startDate') and data.get('endDate'):
+                    start_dt = datetime.fromisoformat(data['startDate'].replace('Z', '+00:00'))
+                    end_dt = datetime.fromisoformat(data['endDate'].replace('Z', '+00:00'))
+                    return int(start_dt.timestamp()), int(end_dt.timestamp())
             except:
                 pass
 
-        date_elems = soup.find_all(text=re.compile(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', re.IGNORECASE))
-
         dates = []
-        for elem in date_elems[:5]:
-            match = re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', elem, re.IGNORECASE)
-            if match:
+        for elem in soup.find_all(text=re.compile(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', re.IGNORECASE))[:5]:
+            if match := re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', elem, re.IGNORECASE):
                 day = int(match.group(1))
-                month_str = match.group(2)
-                month = datetime.strptime(month_str, '%b').month
-                dt = datetime(season, month, day)
-                dates.append(int(dt.timestamp()))
+                month = datetime.strptime(match.group(2), '%b').month
+                dates.append(int(datetime(season, month, day).timestamp()))
 
         if dates:
             dates.sort()
             return dates[0], dates[-1]
-
         return 0, 0
+
+    def _extract_scheduled_sessions_sync(self, season: int, location: str) -> List[Dict]:
+        driver = self._create_selenium_driver()
+        try:
+            logger.info(f"Fetching scheduled sessions: {self.base_url}/en/racing/{season}/{location}")
+            driver.get(f"{self.base_url}/en/racing/{season}/{location}")
+            time.sleep(5)
+
+            soup = BeautifulSoup(driver.page_source, 'lxml')
+            sessions = []
+            session_map = {'practice 1': 'practice_1', 'practice 2': 'practice_2', 'practice 3': 'practice_3',
+                          'qualifying': 'qualifying', 'sprint qualifying': 'sprint_qualifying', 'sprint': 'sprint', 'race': 'race'}
+
+            for script in soup.find_all('script'):
+                if not script.string or '"@type":"SportsEvent"' not in script.string:
+                    continue
+
+                start = 0
+                while (event_start := script.string.find('"@type":"SportsEvent"', start)) != -1:
+                    brace_start = script.string.rfind('{', 0, event_start)
+                    if brace_start == -1:
+                        break
+
+                    brace_count, pos = 1, brace_start + 1
+                    while pos < len(script.string) and brace_count > 0:
+                        if script.string[pos] == '{':
+                            brace_count += 1
+                        elif script.string[pos] == '}':
+                            brace_count -= 1
+                        pos += 1
+
+                    if brace_count == 0:
+                        try:
+                            event_data = json.loads(script.string[brace_start:pos])
+                            if event_data.get('@type') == 'SportsEvent' and event_data.get('name') and event_data.get('startDate'):
+                                name_lower = event_data['name'].lower()
+                                session_type = None
+
+                                for key, type_val in session_map.items():
+                                    if key in name_lower:
+                                        session_type = 'sprint_qualifying' if key == 'sprint' and 'qualifying' in name_lower else type_val if not (key == 'qualifying' and 'sprint' in name_lower) else None
+                                        if session_type:
+                                            break
+
+                                if session_type:
+                                    dt = datetime.fromisoformat(event_data['startDate'].replace('Z', '+00:00'))
+                                    sessions.append({'type': session_type, 'date': int(dt.timestamp())})
+                        except:
+                            pass
+                    start = event_start + 1
+
+            logger.info(f"Found {len(sessions)} scheduled sessions for {location}")
+            return [{'type': s['type'], 'date': s['date'], 'total_laps': 0, 'current_lap': 0, 'results': []} for s in sessions]
+        finally:
+            driver.quit()
 
     async def _extract_sessions(self, client: httpx.AsyncClient, season: int, location: str, soup: BeautifulSoup) -> List[Dict]:
         sessions = []
@@ -317,7 +323,6 @@ class F1WebsiteClient:
                 continue
 
             if f'/results/{season}/' not in href or f'/{location}/' not in href:
-                logger.warning(f"Skipping invalid session link: {href}")
                 continue
 
             for path_key, session_type in session_type_map.items():
@@ -326,118 +331,104 @@ class F1WebsiteClient:
 
                 if href.endswith(f'/{path_key}') or f'/{path_key}' in href:
                     try:
-                        if not href.startswith('http'):
-                            full_url = self.base_url + href
-                        else:
-                            full_url = href
-
+                        full_url = self.base_url + href if not href.startswith('http') else href
                         session_data = await self._fetch_session_data(client, full_url, session_type, season)
 
-                        if session_data:
-                            if session_data['date'] == 0:
-                                raise Exception(f"Failed to extract date for session {session_type}")
-                            sessions.append(session_data)
-                            fetched_types.add(session_type)
+                        if session_data['date'] == 0:
+                            raise Exception(f"Failed to extract date for session {session_type}")
 
+                        sessions.append(session_data)
+                        fetched_types.add(session_type)
                         await asyncio.sleep(0.5)
                         break
                     except Exception as e:
                         logger.error(f"Failed to fetch session {session_type}: {e}")
                         raise
 
+        if not sessions:
+            logger.info(f"No result links found for {location}, fetching scheduled sessions")
+            sessions = await asyncio.to_thread(self._extract_scheduled_sessions_sync, season, location)
+
         return sessions
 
-    async def _fetch_session_data(self, client: httpx.AsyncClient, url: str, session_type: str, season: int) -> Dict:
+    def _fetch_session_data_sync(self, url: str, session_type: str, season: int) -> Dict:
+        driver = self._create_selenium_driver()
+
         try:
-            html = await self._fetch_with_retry(client, url, max_retries=2)
-        except Exception as e:
-            logger.warning(f"Failed to fetch session from {url}: {e}")
-            raise
+            logger.info(f"Fetching session data: {url}")
+            driver.get(url)
 
-        soup = BeautifulSoup(html, 'html.parser')
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "table"))
+            )
 
-        session_date = self._extract_session_date(soup, season)
-        if session_date == 0:
-            raise Exception(f"Failed to extract session date from {url}")
+            def table_has_data(driver):
+                rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
+                return len(rows) > 0
 
-        results = self._parse_session_results(soup)
-        if not results:
-            raise Exception(f"Failed to extract session results from {url}")
+            WebDriverWait(driver, 20).until(table_has_data)
 
-        return {
-            'type': session_type,
-            'date': session_date,
-            'total_laps': 0,
-            'current_lap': 0,
-            'results': results
-        }
+            html = driver.page_source
+            soup = BeautifulSoup(html, 'html.parser')
+
+            session_date = self._extract_session_date(soup, season)
+            if session_date == 0:
+                raise Exception(f"Failed to extract session date from {url}")
+
+            results = self._parse_session_results(soup)
+            if not results:
+                raise Exception(f"Failed to extract session results from {url}")
+
+            return {
+                'type': session_type,
+                'date': session_date,
+                'total_laps': 0,
+                'current_lap': 0,
+                'results': results
+            }
+        finally:
+            driver.quit()
+
+    async def _fetch_session_data(self, client: httpx.AsyncClient, url: str, session_type: str, season: int) -> Dict:
+        return await asyncio.to_thread(self._fetch_session_data_sync, url, session_type, season)
 
     def _extract_session_date(self, soup: BeautifulSoup, season: int) -> int:
-        scripts = soup.find_all('script', type='application/ld+json')
-        for script in scripts:
+        for script in soup.find_all('script', type='application/ld+json'):
             try:
-                import json
                 data = json.loads(script.string)
-                if isinstance(data, dict) and data.get('@type') == 'SportsEvent':
-                    start_date = data.get('startDate')
-                    if start_date:
-                        dt = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
-                        return int(dt.timestamp())
+                if data.get('@type') == 'SportsEvent' and data.get('startDate'):
+                    return int(datetime.fromisoformat(data['startDate'].replace('Z', '+00:00')).timestamp())
             except:
                 pass
 
-        date_elems = soup.find_all(text=re.compile(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}', re.IGNORECASE))
-        for elem in date_elems:
-            match = re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})', elem, re.IGNORECASE)
-            if match:
-                day = int(match.group(1))
-                month_str = match.group(2)
-                year = int(match.group(3))
-                if year == season:
-                    month = datetime.strptime(month_str, '%b').month
-                    dt = datetime(year, month, day)
-                    return int(dt.timestamp())
-
+        for elem in soup.find_all(text=re.compile(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}', re.IGNORECASE)):
+            if match := re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})', elem, re.IGNORECASE):
+                if int(match.group(3)) == season:
+                    day, month = int(match.group(1)), datetime.strptime(match.group(2), '%b').month
+                    return int(datetime(season, month, day).timestamp())
         return 0
 
     def _parse_session_results(self, soup: BeautifulSoup) -> List[Dict]:
-        results = []
-
-        table = soup.select_one('table')
-        if not table:
+        if not (table := soup.select_one('table')):
             return []
 
-        rows = table.select('tbody tr')
-        for row in rows:
+        results = []
+        for row in table.select('tbody tr'):
             cells = row.select('td')
             if len(cells) < 5:
                 continue
 
             try:
-                position_text = cells[0].text.strip()
-                position = int(re.search(r'\d+', position_text).group()) if re.search(r'\d+', position_text) else 0
-
-                driver_number_text = cells[1].text.strip()
-                driver_number = int(re.search(r'\d+', driver_number_text).group()) if re.search(r'\d+', driver_number_text) else 0
+                position = int(re.search(r'\d+', cells[0].text.strip()).group()) if re.search(r'\d+', cells[0].text.strip()) else 0
+                driver_number = int(re.search(r'\d+', cells[1].text.strip()).group()) if re.search(r'\d+', cells[1].text.strip()) else 0
 
                 driver_name_raw = cells[2].text.strip()
-                driver_code_match = re.search(r'[A-Z]{3}$', driver_name_raw)
-                driver_code = driver_code_match.group() if driver_code_match else ''
-                driver_name = re.sub(r'[A-Z]{3}$', '', driver_name_raw).strip()
-                if not driver_name:
-                    driver_name = driver_name_raw
+                driver_code = match.group() if (match := re.search(r'[A-Z]{3}$', driver_name_raw)) else ''
+                driver_name = re.sub(r'[A-Z]{3}$', '', driver_name_raw).strip() or driver_name_raw
 
                 team = cells[3].text.strip()
-
                 cell_4_text = cells[4].text.strip()
                 is_race = bool(re.match(r'^\d+$', cell_4_text))
-
-                if is_race:
-                    laps = int(cell_4_text) if cell_4_text.isdigit() else 0
-                    time = cells[5].text.strip() if len(cells) > 5 else ''
-                else:
-                    time = cell_4_text
-                    laps = 0
 
                 results.append({
                     'position': position,
@@ -445,13 +436,11 @@ class F1WebsiteClient:
                     'driver_name': driver_name,
                     'driver_code': driver_code,
                     'team': team,
-                    'time': time,
-                    'laps': laps
+                    'time': cells[5].text.strip() if is_race and len(cells) > 5 else cell_4_text,
+                    'laps': int(cell_4_text) if is_race and cell_4_text.isdigit() else 0
                 })
-            except Exception as e:
-                logger.debug(f"Failed to parse result row: {e}")
+            except:
                 continue
-
         return results
 
     async def _fetch_with_retry(self, client: httpx.AsyncClient, url: str, max_retries: int = 3) -> str:
@@ -466,5 +455,3 @@ class F1WebsiteClient:
                 wait_time = 2 ** attempt
                 logger.warning(f"Retry {attempt + 1}/{max_retries} for {url}: {e}")
                 await asyncio.sleep(wait_time)
-
-        raise Exception(f"Failed to fetch {url} after {max_retries} retries")

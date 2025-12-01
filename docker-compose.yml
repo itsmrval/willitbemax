@@ -74,6 +74,16 @@ services:
       - willitbemax-network
     restart: unless-stopped
 
+  selenium:
+    image: selenium/standalone-chromium:latest
+    container_name: willitbemax-selenium
+    ports:
+      - "4444:4444"
+    networks:
+      - willitbemax-network
+    shm_size: 2gb
+    restart: unless-stopped
+
   fetcher_service:
     build:
       context: .
@@ -82,11 +92,13 @@ services:
     environment:
       DATA_SCHEDULER_URI: data_scheduler:50051
       ERGAST_API_URL: https://api.jolpi.ca/ergast/f1
+      SELENIUM_URL: http://selenium:4444
       LOG_LEVEL: INFO
       HTTP_PORT: 8082
     depends_on:
       - data_scheduler
       - traefik
+      - selenium
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.fetcher.rule=PathPrefix(`/fetcher/v1`)"
