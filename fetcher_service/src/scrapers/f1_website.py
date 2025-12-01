@@ -157,7 +157,6 @@ class F1WebsiteClient:
                 image_url = self.base_url + image_url
             try:
                 circuit['image_base64'] = await self._download_image_as_base64(client, image_url)
-                logger.info(f"Successfully downloaded circuit image: {image_url}")
             except Exception as e:
                 logger.error(f"Failed to download circuit image from {image_url}: {e}")
                 raise Exception(f"Circuit image download failed: {e}")
