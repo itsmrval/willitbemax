@@ -16,7 +16,7 @@
 
 ### 1. Site officiel F1 (Scraping)
 - **URL**: https://www.formula1.com
-- **Données**: ?
+- **Données**: Calendrier des courses, circuits, sessions, résultats
 
 ### 2. API LiveTiming Formula 1
 - **Type**: API temps réel
@@ -43,16 +43,30 @@ Récupérer et synchroniser les données de saisons
 }
 ```
 
-### POST /fetch/rounds?season=2025
-Récupérer les rounds pour une saison
+### POST /fetch/rounds?season=2025&round=0
+Récupérer les rounds pour une saison (avec détails complets: circuit, sessions, résultats)
+
+**Paramètres**:
+- `season` (requis): Année de la saison
+- `round` (optionnel): ID du round spécifique à récupérer
+
+**Stratégie all-or-nothing**:
+- Récupère tous les rounds (ou un round spécifique si `round` fourni)
+- Pour chaque round, récupère circuit + image (base64) + sessions + résultats
+- Si UNE SEULE partie échoue après retry, rien n'est écrit en base
+- Retry logic: 3 tentatives max avec exponential backoff
+
+**Données récupérées**:
+- Circuit: nom, localisation, image (base64), nombre de tours
+- Sessions: Practice 1-3, Qualifying, Sprint Qualifying, Sprint, Race
+- Résultats: Position, numéro pilote, nom, équipe, temps absolu, tours
 
 **Réponse**:
 ```json
 {
     "success": true,
-    "source": "ergast",
-    "fetched_count": 24,
-    "synced": true,
+    "source": "f1_website",
+    "count": 24,
     "timestamp": 1732834567
 }
 ```

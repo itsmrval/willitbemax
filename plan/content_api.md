@@ -18,134 +18,178 @@
 
 ## Endpoints
 
+### GET /v1/seasons
+Retourne toutes les saisons
+
 ### GET /v1/seasons/:year/rounds
-Retourne tous les rounds pour une saison
+Retourne tous les rounds pour une saison avec détails 
 
 **Réponse**:
 ```json
 {
     "metadata": {
-        "date": "date unix",
-        "cached": true/false
+        "date": 1732834567,
+        "cached": false
     },
     "result": {
         "season": 2025,
         "rounds": [
             {
                 "round_id": 0,
-                "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
-                "first_date": "unix date",
-                "end_date": "unix date",
+                "name": "Formula 1 Australian Grand Prix 2025",
+                "season": 2025,
+                "first_date": 1710403200,
+                "end_date": 1710576000,
                 "circuit": {
-                    "name": "Albert Park Grand Prix Circuit",
+                    "name": "Albert Park Circuit",
                     "lat": "-37.8497",
                     "long": "144.968",
                     "locality": "Melbourne",
-                    "country": "Australia"
-                }
-            },
-            {
-                "round_id": 1,
-                "name": "Formula 1 Gulf Air Bahrain Grand Prix 2025",
-                "first_date": "unix date",
-                "end_date": "unix date",
-                "circuit": {
-                    "name": "Bahrain International Circuit",
-                    "lat": "26.0325",
-                    "long": "50.5106",
-                    "locality": "Sakhir",
-                    "country": "Bahrain"
-                }
+                    "country": "Australia",
+                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+                    "laps": 58
+                },
+                "sessions": [
+                    {
+                        "type": "practice_1",
+                        "date": 1710403200,
+                        "total_laps": 0,
+                        "current_laps": 1,
+                        "results": [
+                            {
+                                "position": 1,
+                                "driver_number": 4,
+                                "driver_name": "Lando Norris",
+                                "team": "McLaren",
+                                "time": "1:15.123",
+                                "laps": 25
+                            }
+                        ]
+                    },
+                    {
+                        "type": "race",
+                        "date": 1710576000,
+                        "total_laps": 58,
+                        "current_laps": 1,
+                        "results": [
+                            {
+                                "position": 1,
+                                "driver_number": 4,
+                                "driver_name": "Lando Norris",
+                                "team": "McLaren",
+                                "time": "1:42:04.304",
+                                "laps": 57
+                            },
+                            {
+                                "position": 2,
+                                "driver_number": 81,
+                                "driver_name": "Oscar Piastri",
+                                "team": "McLaren",
+                                "time": "1:42:07.555",
+                                "laps": 57
+                            }
+                        ]
+                    }
+                ]
             }
         ]
     }
 }
 ```
 
+**Notes**:
+- `circuit.image_base64`: Image du circuit encodée en base64
+- `time`: Temps exact du tour
+
 ### GET /v1/seasons/:year/rounds/:round_id
-Retourne les détails d'un round spécifique avec les sessions
+Retourne les détails d'un round spécifique avec toutes les sessions et résultats
 
 **Réponse**:
 ```json
 {
     "metadata": {
-        "date": "date unix", // date de mise à jour des données
-        "cached": true/false // a la réponse de l'api
+        "date": 1732834567,
+        "cached": false
     },
     "result": {
         "season": 2025,
-        "round_id": 0,
-        "circuit": {
-            "name": "Albert Park Grand Prix Circuit",
-            "lat": "-37.8497",
-            "long": "144.968",
-            "locality": "Melbourne",
-            "country": "Australia"
-        }
-        "name": "Formula 1 Louis Vuitton Australian Grand Prix 2025",
-        "first_date": "date",
-        "end_date": "date",
-        "sessions": [
+        "rounds": [
             {
-                "type": "race", // ["test", "race", "sprint_race",
-                                 // "practice_1", "practice_2", "practice_3",
-                                 // "qualifying_1", "qualifying_2", "qualifying_3",
-                                 // "sprint_qualifying_1", "sprint_qualifying_2", "sprint_qualifying_3"]
-                "date": "unix date",
-                "total_laps": 57,        // Nombre de tours prévus pour la session
-                "completed_laps": 57,    // Nombre de tours complétés (peut être < total_laps si session en cours)
-                "results": [
+                "round_id": 0,
+                "name": "Formula 1 Australian Grand Prix 2025",
+                "season": 2025,
+                "first_date": 1710403200,
+                "end_date": 1710576000,
+                "circuit": {
+                    "name": "Albert Park Circuit",
+                    "lat": "-37.8497",
+                    "long": "144.968",
+                    "locality": "Melbourne",
+                    "country": "Australia",
+                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+                    "laps": 58
+                },
+                "sessions": [
                     {
-                        "position": 1,
-                        "driver_number": 4,
-                        "driver_name": "Lando Norris",
-                        "team": "McLaren",
-                        "laps": 57,
-                        "time": "1:42:04.304",
-                        "points": 25
+                        "type": "practice_1",
+                        "date": 1710403200,
+                        "total_laps": 0,
+                        "current_laps": 1,
+                        "results": [...]
                     },
                     {
-                        "position": 2,
-                        "driver_number": 81,
-                        "driver_name": "Oscar Piastri",
-                        "team": "McLaren",
-                        "laps": 57,
-                        "time": "+3.251",
-                        "points": 18
+                        "type": "qualifying",
+                        "date": 1710489600,
+                        "total_laps": 0,
+                        "current_laps": 1,
+                        "results": [
+                            {
+                                "position": 1,
+                                "driver_number": 4,
+                                "driver_name": "Lando Norris",
+                                "team": "McLaren",
+                                "time": "1:15.225",
+                                "laps": 0
+                            }
+                        ]
                     },
                     {
-                        "position": 3,
-                        "driver_number": 16,
-                        "driver_name": "Charles Leclerc",
-                        "team": "Ferrari",
-                        "laps": 57,
-                        "time": "+8.928",
-                        "points": 15
-                    }
-                ]
-            },
-            {
-                "type": "qualifying_3",
-                "date": "unix date",
-                "total_laps": null,      // null pour les qualifications (basé sur le temps)
-                "completed_laps": null,
-                "results": [
-                    {
-                        "position": 1,
-                        "driver_number": 4,
-                        "driver_name": "Lando Norris",
-                        "team": "McLaren",
-                        "laps": 0,
-                        "time": "1:15.225",
-                        "points": 0
+                        "type": "race",
+                        "date": 1710576000,
+                        "total_laps": 58,
+                        "current_laps": 1,
+                        "results": [
+                            {
+                                "position": 1,
+                                "driver_number": 4,
+                                "driver_name": "Lando Norris",
+                                "team": "McLaren",
+                                "time": "1:42:04.304",
+                                "laps": 57
+                            },
+                            {
+                                "position": 2,
+                                "driver_number": 81,
+                                "driver_name": "Oscar Piastri",
+                                "team": "McLaren",
+                                "time": "1:42:07.555",
+                                "laps": 57
+                            }
+                        ]
                     }
                 ]
             }
         ]
     }
 }
-
 ```
+
+**Types de sessions**:
+- `practice_1`, `practice_2`, `practice_3`: Essais libres
+- `qualifying`: Qualifications
+- `sprint_qualifying`: Qualifications sprint
+- `sprint`: Course sprint
+- `race`: Course principale
 
 ### GET /v1/seasons/:year/drivers
 Retourne le classement des pilotes pour une saison

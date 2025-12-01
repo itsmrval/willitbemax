@@ -49,3 +49,7 @@ func (c *Client) Close() error {
 func (c *Client) GetSeasons(ctx context.Context, filter *pb.SeasonsFilter) (*pb.SeasonsResponse, error) {
 	return c.client.GetSeasons(ctx, filter)
 }
+
+func (c *Client) GetRounds(ctx context.Context, filter *pb.RoundsFilter) (*pb.RoundsResponse, error) {
+	return c.client.GetRounds(ctx, filter)
+}

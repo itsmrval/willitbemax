@@ -17,30 +17,38 @@ protobuf/
 ### Messages principaux
 
 #### Season
+
+#### DriverStanding
 ```protobuf
 message DriverStanding {
   int32 position = 1;
   int32 driver_number = 2;
   string driver_name = 3;
-  string driver_code = 4;      // ex: "VER", "NOR"
+  string driver_code = 4;
   string team = 5;
   int32 points = 6;
   int32 wins = 7;
 }
+```
 
+#### ConstructorStanding
+```protobuf
 message ConstructorStanding {
   int32 position = 1;
   string team = 2;
   int32 points = 3;
   int32 wins = 4;
 }
+```
 
+#### Season
+```protobuf
 message Season {
   int32 year = 1;
   int32 rounds = 2;
-  int64 start_date = 3;        // Unix timestamp
-  int64 end_date = 4;          // Unix timestamp
-  string status = 5;           // "in_progress", "completed", "upcoming"
+  int32 start_date = 3;
+  int32 end_date = 4;
+  string status = 5;                                    // "completed", "in_progress", "upcoming"
   int32 current_round = 6;
   repeated DriverStanding driver_standings = 7;
   repeated ConstructorStanding constructor_standings = 8;
@@ -49,229 +57,129 @@ message Season {
 }
 ```
 
-#### Round (Grand Prix)
+#### SeasonsData
 ```protobuf
-message Round {
-  int32 season = 1;
-  int32 round_id = 2;
-  string name = 3;             // ex: "Formula 1 Louis Vuitton Australian Grand Prix 2025"
-  int64 first_date = 4;        // Unix timestamp (début du weekend)
-  int64 end_date = 5;          // Unix timestamp (fin du weekend)
-  Circuit circuit = 6;
-  repeated Session sessions = 7;
+message SeasonsData {
+  repeated Season seasons = 1;
 }
+```
 
+### Rounds (Courses)
+
+#### Circuit
+```protobuf
 message Circuit {
-  string name = 1;             // ex: "Albert Park Grand Prix Circuit"
-  string lat = 2;              // Latitude (string pour précision)
-  string long = 3;             // Longitude (string pour précision)
-  string locality = 4;         // ex: "Melbourne"
-  string country = 5;          // ex: "Australia"
+  string name = 1;
+  string lat = 2;
+  string long = 3;
+  string locality = 4;
+  string country = 5;
+  string image_base64 = 6;    // Image du circuit encodée en base64
+  int32 laps = 7;              // Nombre de tours du circuit
+}
+```
+
+#### SessionResult
+```protobuf
+message SessionResult {
+  int32 position = 1;
+  int32 driver_number = 2;
+  string driver_name = 3;
+  string team = 4;
+  string time = 5;             // Temps absolu
+  int32 laps = 6;              // Tours complétés
 }
 ```
 
 #### Session
 ```protobuf
 message Session {
-  string type = 1;             // "test", "race", "sprint_race", "practice_1",
-                               // "practice_2", "practice_3", "qualifying_1",
-                               // "qualifying_2", "qualifying_3", "sprint_qualifying_1",
-                               // "sprint_qualifying_2", "sprint_qualifying_3"
-  int64 date = 2;              // Unix timestamp
-  optional int32 total_laps = 3;     // Nombre de tours prévus (null pour qualif/practice)
-  optional int32 completed_laps = 4; // Nombre de tours complétés (< total si en cours par ex)
-  repeated Result results = 5;       // Array de tous les résultats (P1, P2, P3, ...)
-}
-
-message Result {
-  int32 position = 1;          // Position finale (1, 2, 3, ...)
-  int32 driver_number = 2;     // Numéro du pilote
-  string driver_name = 3;      // Nom complet du pilote
-  string team = 4;             // Nom de l'équipe
-  int32 laps = 5;              // Nombre de tours complétés
-  string time = 6;             // "1:42:04.304", "+3.251" ou "DNF", "DNS", "DSQ"
-  int32 points = 7;            // Points marqués (25, 18, 15, ...)
+  string type = 1;                           // practice_1, practice_2, practice_3, qualifying, sprint_qualifying, sprint, race
+  int32 date = 2;                            // Timestamp Unix de la session
+  int32 total_laps = 3;                      // Tours prévus (0 pour qualifying)
+  int32 current_laps = 4;                    // Tours actuels
+  repeated SessionResult results = 5;
 }
 ```
 
-
-#### Metadata
+#### Round
 ```protobuf
-message Metadata {
-  int64 date = 1;              // Unix timestamp (dernière mise à jour)
-  bool cached = 2;             // true si servi depuis Redis
+message Round {
+  int32 round_id = 1;
+  string name = 2;
+  int32 season = 3;
+  Circuit circuit = 4;
+  int32 first_date = 5;        // Date de début du weekend
+  int32 end_date = 6;          // Date de fin du weekend
+  repeated Session sessions = 7;
 }
 ```
 
-### Messages de collections
-
+#### RoundsData
 ```protobuf
-message SeasonsData {
-  repeated Season seasons = 1;
-}
-
 message RoundsData {
   repeated Round rounds = 1;
 }
-
-message ResultsData {
-  int32 season = 1;
-  int32 round_id = 2;
-  string session_type = 3;
-  repeated Result results = 4;
-}
 ```
 
----
+## Filtres et Réponses
 
-## services.proto
+### Seasons
 
-### DataSchedulerService
-
-Service gRPC central pour toutes les opérations de base de données (MongoDB + Redis).
-
-```protobuf
-service DataSchedulerService {
-  // ============ Opérations d'écriture ============
-
-  // Écrire/mettre à jour les données de saisons
-  rpc WriteSeasons(SeasonsData) returns (WriteResponse);
-
-  // Écrire/mettre à jour les données de rounds
-  rpc WriteRounds(RoundsData) returns (WriteResponse);
-
-  // Écrire/mettre à jour les résultats d'une session
-  rpc WriteResults(ResultsData) returns (WriteResponse);
-
-  // Écrire/mettre à jour les classements pilotes
-  rpc WriteStandings(StandingsData) returns (WriteResponse);
-
-  // ============ Opérations de lecture ============
-
-  // Récupérer les saisons (avec filtres optionnels)
-  rpc GetSeasons(SeasonsFilter) returns (SeasonsResponse);
-
-  // Récupérer les rounds d'une saison
-  rpc GetRounds(RoundsFilter) returns (RoundsResponse);
-
-  // Récupérer les résultats d'une session
-  rpc GetResults(ResultsFilter) returns (ResultsResponse);
-
-  // Récupérer les classements pilotes
-  rpc GetStandings(StandingsFilter) returns (StandingsResponse);
-}
-```
-
-### Messages de requête (Filters)
-
+#### SeasonsFilter
 ```protobuf
 message SeasonsFilter {
-  optional int32 year = 1;     // Si vide, retourne toutes les saisons
-  optional string status = 2;  // Filtrer par status
-}
-
-message RoundsFilter {
-  int32 season = 1;            // Obligatoire
-  optional int32 round_id = 2; // Si fourni, retourne un round spécifique
-}
-
-message ResultsFilter {
-  int32 season = 1;
-  int32 round_id = 2;
-  optional string session_type = 3; // Si vide, retourne toutes les sessions
-}
-
-message StandingsFilter {
-  int32 season = 1;
-  optional int32 after_round = 2;   // Classement après un round spécifique
+  optional int32 year = 1;
+  optional string status = 2;
 }
 ```
 
-### Messages de réponse
-
+#### SeasonsResponse
 ```protobuf
-message WriteResponse {
-  bool success = 1;
-  string message = 2;          // Message d'erreur ou de succès
-  int32 records_affected = 3;  // Nombre d'enregistrements modifiés
-}
-
 message SeasonsResponse {
   Metadata metadata = 1;
   SeasonsData data = 2;
 }
+```
 
+### Rounds
+
+#### RoundsFilter
+```protobuf
+message RoundsFilter {
+  int32 season = 1;              // Obligatoire
+  optional int32 round_id = 2;   // Optionnel: filtre sur un round spécifique
+}
+```
+
+#### RoundsResponse
+```protobuf
 message RoundsResponse {
   Metadata metadata = 1;
   RoundsData data = 2;
 }
+```
 
-message ResultsResponse {
-  Metadata metadata = 1;
-  ResultsData data = 2;
+### WriteResponse
+```protobuf
+message WriteResponse {
+  bool success = 1;
+  string message = 2;
+  int32 records_affected = 3;
 }
+```
 
-message StandingsResponse {
-  Metadata metadata = 1;
-  StandingsData data = 2;
+## Service gRPC: DataSchedulerService
+
+```protobuf
+service DataSchedulerService {
+  // Seasons
+  rpc WriteSeasons(SeasonsData) returns (WriteResponse);
+  rpc GetSeasons(SeasonsFilter) returns (SeasonsResponse);
+  
+  // Rounds
+  rpc WriteRounds(RoundsData) returns (WriteResponse);
+  rpc GetRounds(RoundsFilter) returns (RoundsResponse);
 }
 ```
 
----
-
-## Utilisation des protobufs
-
-### 1. Génération du code
-
-**Pour Go (content_api, data_scheduler, scheduler_api)**:
-```bash
-protoc --go_out=. --go-grpc_out=. protobuf/*.proto
-```
-
-**Pour Python (fetcher_service)**:
-```bash
-python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. protobuf/*.proto
-```
-
-### 2. Clients gRPC
-
-#### content_api → data_scheduler
-```go
-// Exemple d'appel depuis content_api
-client := pb.NewDataSchedulerServiceClient(conn)
-response, err := client.GetRounds(ctx, &pb.RoundsFilter{
-    Season: 2025,
-})
-```
-
-#### fetcher_service → data_scheduler
-```python
-# Exemple d'appel depuis fetcher_service (Python)
-stub = DataSchedulerServiceStub(channel)
-response = stub.WriteRounds(rounds_data)
-```
-
----
-
-## Flux de données
-
-```
-fetcher_service (Python)
-    ↓ WriteSeasons/WriteRounds/WriteResults/WriteStandings
-data_scheduler (gRPC Server)
-    ↓ Persist to MongoDB + Cache to Redis
-    ↑ GetSeasons/GetRounds/GetResults/GetStandings
-content_api (gRPC Client)
-    ↓ Transform to JSON
-Utilisateurs finaux (HTTP/REST)
-```
-
----
-
-## Notes importantes
-
-1. **Types de dates**: Tous les timestamps sont en Unix time (int64) pour faciliter la sérialisation
-2. **Champs optionnels**: Les filtres utilisent `optional` pour permettre des requêtes flexibles
-3. **Cache metadata**: Chaque réponse inclut des métadonnées indiquant si les données viennent du cache Redis
-4. **String vs int**: Les positions GPS (lat/long) sont en string pour préserver la précision
-5. **Time format**: Les temps de course sont en string car peuvent contenir "DNF", "DNS", "DSQ"
