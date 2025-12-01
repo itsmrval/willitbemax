@@ -5,7 +5,6 @@ import asyncio
 import re
 import os
 import json
-import time
 from bs4 import BeautifulSoup
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -31,58 +30,32 @@ class F1WebsiteClient:
         return webdriver.Remote(command_executor=selenium_url, options=chrome_options)
 
     def _fetch_schedule_with_selenium(self, season: int) -> List[Dict]:
-        url = f"{self.base_url}/en/racing/{season}"
         driver = self._create_selenium_driver()
-
         try:
-            logger.info(f"Fetching schedule page with Selenium: {url}")
-            driver.get(url)
-
-            def wait_for_all_rounds(driver):
-                script = f"""
-                const cards = document.querySelectorAll('a[href*="/racing/{season}/"]');
-                const roundTexts = Array.from(cards).filter(card =>
-                    card.textContent.match(/ROUND\\s+\\d+/i)
-                );
-                return roundTexts.length;
-                """
-                count = driver.execute_script(script)
-                return count >= 24
-
+            driver.get(f"{self.base_url}/en/racing/{season}")
             driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-
-            WebDriverWait(driver, 20).until(wait_for_all_rounds)
+            WebDriverWait(driver, 20).until(lambda d: d.execute_script(f"""
+                return document.querySelectorAll('a[href*="/racing/{season}/"]').length >= 24 &&
+                       Array.from(document.querySelectorAll('a[href*="/racing/{season}/"]')).filter(card =>
+                           card.textContent.match(/ROUND\\s+\\d+/i)).length >= 24;
+            """))
 
             rounds_data = driver.execute_script(f"""
-                const cards = document.querySelectorAll('a[href*="/racing/{season}/"]');
                 const roundsMap = new Map();
-
-                cards.forEach(card => {{
+                document.querySelectorAll('a[href*="/racing/{season}/"]').forEach(card => {{
                     const href = card.getAttribute('href') || '';
-                    const text = card.textContent;
-                    const roundMatch = text.match(/ROUND\\s+(\\d+)/i);
-
-                    if (!roundMatch) return;
-                    if (!href.includes('/racing/{season}/') || (href.match(/\\//g) || []).length < 4) return;
-
+                    const roundMatch = card.textContent.match(/ROUND\\s+(\\d+)/i);
+                    if (!roundMatch || !href.includes('/racing/{season}/') || (href.match(/\\//g) || []).length < 4) return;
                     const location = href.split('/').pop();
-                    if (!location || location === '{season}') return;
-
-                    const roundId = parseInt(roundMatch[1]);
-                    if (roundsMap.has(roundId)) return;
-
-                    const name = location.replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());
-
-                    roundsMap.set(roundId, {{
-                        round_id: roundId,
+                    if (!location || location === '{season}' || roundsMap.has(parseInt(roundMatch[1]))) return;
+                    roundsMap.set(parseInt(roundMatch[1]), {{
+                        round_id: parseInt(roundMatch[1]),
                         location: location,
-                        name: name
+                        name: location.replace(/-/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase())
                     }});
                 }});
-
                 return Array.from(roundsMap.values());
             """)
-
             rounds_data.sort(key=lambda x: x['round_id'])
             return rounds_data
         finally:
@@ -171,23 +144,35 @@ class F1WebsiteClient:
         }
 
     async def _extract_circuit_info(self, client: httpx.AsyncClient, soup: BeautifulSoup) -> Dict:
-        circuit = {'name': '', 'locality': '', 'country': '', 'lat': '0', 'long': '0', 'laps': 0, 'image_base64': ''}
+        circuit = {
+            'name': '',
+            'locality': '',
+            'country': '',
+            'lat': '0',
+            'long': '0',
+            'laps': 0,
+            'image_base64': ''
+        }
 
         for script in soup.find_all('script', type='application/ld+json'):
             try:
                 data = json.loads(script.string)
-                if data.get('@type') == 'SportsEvent':
-                    location = data.get('location', {})
-                    if not circuit['name'] and location.get('name'):
-                        circuit['name'] = location['name']
+                if data.get('@type') != 'SportsEvent':
+                    continue
 
-                    address = location.get('address', {})
+                location = data.get('location', {})
+                if not circuit['name'] and location.get('name'):
+                    circuit['name'] = location['name']
+
+                address = location.get('address', {})
+                if address:
                     if address.get('addressLocality'):
                         circuit['locality'] = address['addressLocality']
                     if address.get('addressCountry'):
                         circuit['country'] = address['addressCountry']
 
-                    geo = location.get('geo', {})
+                geo = location.get('geo', {})
+                if geo:
                     if geo.get('latitude') and geo['latitude'] != 0:
                         circuit['lat'] = str(geo['latitude'])
                     if geo.get('longitude') and geo['longitude'] != 0:
@@ -195,25 +180,26 @@ class F1WebsiteClient:
             except:
                 pass
 
-        if not circuit['name']:
-            circuit_elem = soup.find(text=re.compile(r'Circuit', re.IGNORECASE))
-            if circuit_elem:
-                circuit['name'] = circuit_elem.strip()
-
         img = soup.select_one('img[src*="Circuit"], img[src*="circuit"], img[alt*="circuit"]')
         if img and img.get('src'):
-            image_url = img['src'] if img['src'].startswith('http') else self.base_url + img['src']
+            image_url = img['src']
+            if not image_url.startswith('http'):
+                image_url = self.base_url + image_url
             try:
                 circuit['image_base64'] = await self._download_image_as_base64(client, image_url)
             except:
                 pass
 
         dt_elem = soup.find('dt', text=re.compile(r'Number\s+of\s+Laps', re.IGNORECASE))
-        if dt_elem and (dd_elem := dt_elem.find_next_sibling('dd')):
-            if match := re.search(r'(\d+)', dd_elem.get_text().strip()):
-                circuit['laps'] = int(match.group(1))
+        if dt_elem:
+            dd_elem = dt_elem.find_next_sibling('dd')
+            if dd_elem:
+                laps_text = dd_elem.get_text().strip()
+                match = re.search(r'(\d+)', laps_text)
+                if match:
+                    circuit['laps'] = int(match.group(1))
 
-        if not circuit['name'] and not circuit['laps']:
+        if not circuit['name'] or not circuit['laps']:
             raise Exception("Failed to extract circuit information")
 
         return circuit
@@ -233,42 +219,44 @@ class F1WebsiteClient:
                     return int(start_dt.timestamp()), int(end_dt.timestamp())
             except:
                 pass
-
-        dates = []
-        for elem in soup.find_all(text=re.compile(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', re.IGNORECASE))[:5]:
-            if match := re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', elem, re.IGNORECASE):
-                day = int(match.group(1))
-                month = datetime.strptime(match.group(2), '%b').month
-                dates.append(int(datetime(season, month, day).timestamp()))
-
-        if dates:
-            dates.sort()
-            return dates[0], dates[-1]
         return 0, 0
 
-    def _extract_scheduled_sessions_sync(self, season: int, location: str) -> List[Dict]:
+    def _extract_all_session_dates_sync(self, season: int, location: str) -> Dict[str, int]:
         driver = self._create_selenium_driver()
         try:
-            logger.info(f"Fetching scheduled sessions: {self.base_url}/en/racing/{season}/{location}")
             driver.get(f"{self.base_url}/en/racing/{season}/{location}")
-            time.sleep(5)
+            WebDriverWait(driver, 20).until(
+                EC.presence_of_element_located((By.TAG_NAME, "script"))
+            )
 
             soup = BeautifulSoup(driver.page_source, 'lxml')
-            sessions = []
-            session_map = {'practice 1': 'practice_1', 'practice 2': 'practice_2', 'practice 3': 'practice_3',
-                          'qualifying': 'qualifying', 'sprint qualifying': 'sprint_qualifying', 'sprint': 'sprint', 'race': 'race'}
+            session_dates = {}
+            session_map = {
+                'practice 1': 'practice_1',
+                'practice 2': 'practice_2',
+                'practice 3': 'practice_3',
+                'qualifying': 'qualifying',
+                'sprint qualifying': 'sprint_qualifying',
+                'sprint': 'sprint',
+                'race': 'race'
+            }
 
             for script in soup.find_all('script'):
                 if not script.string or '"@type":"SportsEvent"' not in script.string:
                     continue
 
                 start = 0
-                while (event_start := script.string.find('"@type":"SportsEvent"', start)) != -1:
+                while True:
+                    event_start = script.string.find('"@type":"SportsEvent"', start)
+                    if event_start == -1:
+                        break
+
                     brace_start = script.string.rfind('{', 0, event_start)
                     if brace_start == -1:
                         break
 
-                    brace_count, pos = 1, brace_start + 1
+                    brace_count = 1
+                    pos = brace_start + 1
                     while pos < len(script.string) and brace_count > 0:
                         if script.string[pos] == '{':
                             brace_count += 1
@@ -279,32 +267,50 @@ class F1WebsiteClient:
                     if brace_count == 0:
                         try:
                             event_data = json.loads(script.string[brace_start:pos])
-                            if event_data.get('@type') == 'SportsEvent' and event_data.get('name') and event_data.get('startDate'):
-                                name_lower = event_data['name'].lower()
-                                session_type = None
+                            if not (event_data.get('@type') == 'SportsEvent' and event_data.get('name') and event_data.get('startDate')):
+                                continue
 
-                                for key, type_val in session_map.items():
-                                    if key in name_lower:
-                                        session_type = 'sprint_qualifying' if key == 'sprint' and 'qualifying' in name_lower else type_val if not (key == 'qualifying' and 'sprint' in name_lower) else None
-                                        if session_type:
-                                            break
+                            name_lower = event_data['name'].lower()
+                            session_type = self._detect_session_type(name_lower, session_map)
 
-                                if session_type:
-                                    dt = datetime.fromisoformat(event_data['startDate'].replace('Z', '+00:00'))
-                                    sessions.append({'type': session_type, 'date': int(dt.timestamp())})
+                            if session_type and session_type not in session_dates:
+                                date_str = event_data['startDate'].replace('Z', '+00:00')
+                                session_dates[session_type] = int(datetime.fromisoformat(date_str).timestamp())
                         except:
                             pass
                     start = event_start + 1
-
-            logger.info(f"Found {len(sessions)} scheduled sessions for {location}")
-            return [{'type': s['type'], 'date': s['date'], 'total_laps': 0, 'current_lap': 0, 'results': []} for s in sessions]
+            return session_dates
         finally:
             driver.quit()
 
+    def _detect_session_type(self, name_lower: str, session_map: Dict[str, str]) -> Optional[str]:
+        for key, type_val in session_map.items():
+            if key not in name_lower:
+                continue
+
+            if key == 'sprint' and 'qualifying' in name_lower:
+                return 'sprint_qualifying'
+            elif key == 'qualifying' and 'sprint' in name_lower:
+                continue
+            else:
+                return type_val
+        return None
+
     async def _extract_sessions(self, client: httpx.AsyncClient, season: int, location: str, soup: BeautifulSoup) -> List[Dict]:
+        session_dates = await asyncio.to_thread(self._extract_all_session_dates_sync, season, location)
+        result_links = soup.find_all('a', href=re.compile(rf'/results/{season}/races/\d+/{location}'))
+
+        if not result_links:
+            return [{
+                'type': session_type,
+                'date': date,
+                'total_laps': 0,
+                'current_lap': 0,
+                'results': []
+            } for session_type, date in session_dates.items()]
+
         sessions = []
         fetched_types = set()
-
         session_type_map = {
             'practice/1': 'practice_1',
             'practice/2': 'practice_2',
@@ -315,101 +321,48 @@ class F1WebsiteClient:
             'race-result': 'race'
         }
 
-        result_links = soup.find_all('a', href=re.compile(rf'/results/{season}/races/\d+/{location}'))
-
         for link in result_links:
             href = link.get('href', '')
-            if not href:
-                continue
-
-            if f'/results/{season}/' not in href or f'/{location}/' not in href:
+            if not href or f'/results/{season}/' not in href or f'/{location}/' not in href:
                 continue
 
             for path_key, session_type in session_type_map.items():
                 if session_type in fetched_types:
                     continue
+                if not (href.endswith(f'/{path_key}') or f'/{path_key}' in href):
+                    continue
 
-                if href.endswith(f'/{path_key}') or f'/{path_key}' in href:
-                    try:
-                        full_url = self.base_url + href if not href.startswith('http') else href
-                        session_data = await self._fetch_session_data(client, full_url, session_type, season)
+                try:
+                    full_url = href if href.startswith('http') else self.base_url + href
+                    results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
 
-                        if session_data['date'] == 0:
-                            raise Exception(f"Failed to extract date for session {session_type}")
-
-                        sessions.append(session_data)
-                        fetched_types.add(session_type)
-                        await asyncio.sleep(0.5)
-                        break
-                    except Exception as e:
-                        logger.error(f"Failed to fetch session {session_type}: {e}")
-                        raise
-
-        if not sessions:
-            logger.info(f"No result links found for {location}, fetching scheduled sessions")
-            sessions = await asyncio.to_thread(self._extract_scheduled_sessions_sync, season, location)
-
+                    sessions.append({
+                        'type': session_type,
+                        'date': session_dates.get(session_type, 0),
+                        'total_laps': 0,
+                        'current_lap': 0,
+                        'results': results
+                    })
+                    fetched_types.add(session_type)
+                    await asyncio.sleep(0.5)
+                    break
+                except Exception as e:
+                    logger.error(f"Failed to fetch session {session_type}: {e}")
+                    raise
         return sessions
 
-    def _fetch_session_data_sync(self, url: str, session_type: str, season: int) -> Dict:
+    def _fetch_session_results_sync(self, url: str) -> List[Dict]:
         driver = self._create_selenium_driver()
-
         try:
-            logger.info(f"Fetching session data: {url}")
             driver.get(url)
-
-            WebDriverWait(driver, 20).until(
-                EC.presence_of_element_located((By.TAG_NAME, "table"))
-            )
-
-            def table_has_data(driver):
-                rows = driver.find_elements(By.CSS_SELECTOR, "table tbody tr")
-                return len(rows) > 0
-
-            WebDriverWait(driver, 20).until(table_has_data)
-
-            html = driver.page_source
-            soup = BeautifulSoup(html, 'html.parser')
-
-            session_date = self._extract_session_date(soup, season)
-            if session_date == 0:
-                raise Exception(f"Failed to extract session date from {url}")
-
-            results = self._parse_session_results(soup)
-            if not results:
-                raise Exception(f"Failed to extract session results from {url}")
-
-            return {
-                'type': session_type,
-                'date': session_date,
-                'total_laps': 0,
-                'current_lap': 0,
-                'results': results
-            }
+            WebDriverWait(driver, 20).until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "table tbody tr")) > 0)
+            return self._parse_session_results(BeautifulSoup(driver.page_source, 'html.parser'))
         finally:
             driver.quit()
 
-    async def _fetch_session_data(self, client: httpx.AsyncClient, url: str, session_type: str, season: int) -> Dict:
-        return await asyncio.to_thread(self._fetch_session_data_sync, url, session_type, season)
-
-    def _extract_session_date(self, soup: BeautifulSoup, season: int) -> int:
-        for script in soup.find_all('script', type='application/ld+json'):
-            try:
-                data = json.loads(script.string)
-                if data.get('@type') == 'SportsEvent' and data.get('startDate'):
-                    return int(datetime.fromisoformat(data['startDate'].replace('Z', '+00:00')).timestamp())
-            except:
-                pass
-
-        for elem in soup.find_all(text=re.compile(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{4}', re.IGNORECASE)):
-            if match := re.search(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})', elem, re.IGNORECASE):
-                if int(match.group(3)) == season:
-                    day, month = int(match.group(1)), datetime.strptime(match.group(2), '%b').month
-                    return int(datetime(season, month, day).timestamp())
-        return 0
-
     def _parse_session_results(self, soup: BeautifulSoup) -> List[Dict]:
-        if not (table := soup.select_one('table')):
+        table = soup.select_one('table')
+        if not table:
             return []
 
         results = []
@@ -419,16 +372,29 @@ class F1WebsiteClient:
                 continue
 
             try:
-                position = int(re.search(r'\d+', cells[0].text.strip()).group()) if re.search(r'\d+', cells[0].text.strip()) else 0
-                driver_number = int(re.search(r'\d+', cells[1].text.strip()).group()) if re.search(r'\d+', cells[1].text.strip()) else 0
+                position_text = cells[0].text.strip()
+                position_match = re.search(r'\d+', position_text)
+                position = int(position_match.group()) if position_match else 0
+
+                number_text = cells[1].text.strip()
+                number_match = re.search(r'\d+', number_text)
+                driver_number = int(number_match.group()) if number_match else 0
 
                 driver_name_raw = cells[2].text.strip()
-                driver_code = match.group() if (match := re.search(r'[A-Z]{3}$', driver_name_raw)) else ''
+                code_match = re.search(r'[A-Z]{3}$', driver_name_raw)
+                driver_code = code_match.group() if code_match else ''
                 driver_name = re.sub(r'[A-Z]{3}$', '', driver_name_raw).strip() or driver_name_raw
 
                 team = cells[3].text.strip()
                 cell_4_text = cells[4].text.strip()
-                is_race = bool(re.match(r'^\d+$', cell_4_text))
+                is_race = cell_4_text.isdigit()
+
+                if is_race and len(cells) > 5:
+                    time = cells[5].text.strip()
+                    laps = int(cell_4_text)
+                else:
+                    time = cell_4_text
+                    laps = 0
 
                 results.append({
                     'position': position,
@@ -436,8 +402,8 @@ class F1WebsiteClient:
                     'driver_name': driver_name,
                     'driver_code': driver_code,
                     'team': team,
-                    'time': cells[5].text.strip() if is_race and len(cells) > 5 else cell_4_text,
-                    'laps': int(cell_4_text) if is_race and cell_4_text.isdigit() else 0
+                    'time': time,
+                    'laps': laps
                 })
             except:
                 continue
