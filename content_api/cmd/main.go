@@ -42,11 +42,8 @@ func main() {
 	})
 
 	seasonsHandler := handlers.NewSeasonsHandler(grpcClient)
-	roundsHandler := handlers.NewRoundsHandler(grpcClient)
 
 	router.GET("/seasons", seasonsHandler.GetSeasons)
-	router.GET("/seasons/:year/rounds", roundsHandler.GetRounds)
-	router.GET("/seasons/:year/rounds/:round_id", roundsHandler.GetRoundDetails)
 
 	log.Printf("Starting content_api HTTP server on port %s", cfg.HTTPPort)
 

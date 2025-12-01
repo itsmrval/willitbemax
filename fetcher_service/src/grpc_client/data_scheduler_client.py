@@ -16,13 +16,6 @@ class DataSchedulerClient:
             logger.error(f"Write error: {e}")
             raise
 
-    def write_rounds(self, rounds_data):
-        try:
-            return self.stub.WriteRounds(rounds_data)
-        except grpc.RpcError as e:
-            logger.error(f"Write rounds error: {e}")
-            raise
-
     def get_seasons(self, year=None, status=None):
         try:
             filter_req = services_pb2.SeasonsFilter()

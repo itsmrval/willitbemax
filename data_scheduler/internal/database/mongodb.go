@@ -36,10 +36,6 @@ func (m *MongoDB) Seasons() *mongo.Collection {
 	return m.db.Collection("seasons")
 }
 
-func (m *MongoDB) Rounds() *mongo.Collection {
-	return m.db.Collection("rounds")
-}
-
 func (m *MongoDB) Disconnect() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
