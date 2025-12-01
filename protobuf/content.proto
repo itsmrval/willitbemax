@@ -45,12 +45,8 @@ message Metadata {
 
 message Circuit {
   string name = 1;
-  string lat = 2;
-  string long = 3;
-  string locality = 4;
-  string country = 5;
-  string image_base64 = 6;
-  int32 laps = 7;
+  int32 laps = 2;
+  string image_base64 = 3;
 }
 
 message SessionResult {

@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="WIBM fetcher_service", version="0.1.0")
 
 ergast = ErgastClient(settings.ERGAST_API_URL)
-f1_website = F1WebsiteClient(ergast_client=ergast)
+f1_website = F1WebsiteClient()
 scheduler = DataSchedulerClient(settings.DATA_SCHEDULER_URI)
 
 @app.get("/")
@@ -99,12 +99,8 @@ async def fetch_rounds(season: int, round: int = None):
         for round_data in rounds_data:
             circuit_proto = content_pb2.Circuit(
                 name=round_data['circuit']['name'],
-                lat=round_data['circuit']['lat'],
-                long=round_data['circuit']['long'],
-                locality=round_data['circuit']['locality'],
-                country=round_data['circuit']['country'],
-                image_base64=round_data['circuit']['image_base64'],
-                laps=round_data['circuit']['laps']
+                laps=round_data['circuit']['laps'],
+                image_base64=round_data['circuit']['image_base64']
             )
 
             sessions_proto = []

@@ -31,12 +31,8 @@ func (h *RoundsHandler) WriteRounds(ctx context.Context, data *pb.RoundsData) (*
 		if round.Circuit != nil {
 			circuitBson = bson.M{
 				"name":         round.Circuit.Name,
-				"lat":          round.Circuit.Lat,
-				"long":         round.Circuit.Long,
-				"locality":     round.Circuit.Locality,
-				"country":      round.Circuit.Country,
-				"image_base64": round.Circuit.ImageBase64,
 				"laps":         round.Circuit.Laps,
+				"image_base64": round.Circuit.ImageBase64,
 			}
 		}
 
@@ -150,12 +146,8 @@ func (h *RoundsHandler) GetRounds(ctx context.Context, filter *pb.RoundsFilter) 
 		if circuitDoc, ok := doc["circuit"].(bson.M); ok {
 			round.Circuit = &pb.Circuit{
 				Name:        getString(circuitDoc, "name"),
-				Lat:         getString(circuitDoc, "lat"),
-				Long:        getString(circuitDoc, "long"),
-				Locality:    getString(circuitDoc, "locality"),
-				Country:     getString(circuitDoc, "country"),
-				ImageBase64: getString(circuitDoc, "image_base64"),
 				Laps:        getInt32(circuitDoc, "laps"),
+				ImageBase64: getString(circuitDoc, "image_base64"),
 			}
 		}
 

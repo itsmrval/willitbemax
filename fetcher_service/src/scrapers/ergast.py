@@ -164,7 +164,7 @@ class ErgastClient:
         return "upcoming"
 
     async def fetch_circuit_for_round(self, season: int, round_num: int) -> Dict:
-        """Fetch circuit information (including lat/long) for a specific round from Ergast"""
+        """Fetch circuit ID for a specific round from Ergast"""
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await self._fetch_with_retry(client, f"{self.url}/{season}/{round_num}.json")
@@ -176,13 +176,9 @@ class ErgastClient:
 
                 race = races[0]
                 circuit = race.get("Circuit", {})
-                location = circuit.get("Location", {})
 
                 return {
-                    "lat": location.get("lat", "0"),
-                    "long": location.get("long", "0"),
-                    "locality": location.get("locality", ""),
-                    "country": location.get("country", "")
+                    "circuitId": circuit.get("circuitId", "")
                 }
             except Exception as e:
                 logger.error(f"Failed to fetch circuit from Ergast for {season}/{round_num}: {e}")

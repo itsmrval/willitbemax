@@ -85,18 +85,14 @@ func (h *RoundsHandler) GetRounds(c *gin.Context) {
 			RoundId:   r.RoundId,
 			Name:      r.Name,
 			Season:    r.Season,
-			FirstDate: r.FirstDate,
-			EndDate:   r.EndDate,
 			Circuit: models.Circuit{
 				Name:        r.Circuit.Name,
-				Lat:         r.Circuit.Lat,
-				Long:        r.Circuit.Long,
-				Locality:    r.Circuit.Locality,
-				Country:     r.Circuit.Country,
-				ImageBase64: r.Circuit.ImageBase64,
 				Laps:        r.Circuit.Laps,
+				ImageBase64: r.Circuit.ImageBase64,
 			},
-			Sessions: sessions,
+			FirstDate: r.FirstDate,
+			EndDate:   r.EndDate,
+			Sessions:  sessions,
 		})
 	}
 
@@ -182,18 +178,14 @@ func (h *RoundsHandler) GetRound(c *gin.Context) {
 			RoundId:   r.RoundId,
 			Name:      r.Name,
 			Season:    r.Season,
-			FirstDate: r.FirstDate,
-			EndDate:   r.EndDate,
 			Circuit: models.Circuit{
 				Name:        r.Circuit.Name,
-				Lat:         r.Circuit.Lat,
-				Long:        r.Circuit.Long,
-				Locality:    r.Circuit.Locality,
-				Country:     r.Circuit.Country,
-				ImageBase64: r.Circuit.ImageBase64,
 				Laps:        r.Circuit.Laps,
+				ImageBase64: r.Circuit.ImageBase64,
 			},
-			Sessions: sessions,
+			FirstDate: r.FirstDate,
+			EndDate:   r.EndDate,
+			Sessions:  sessions,
 		})
 	}
 

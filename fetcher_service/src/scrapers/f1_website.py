@@ -17,10 +17,9 @@ from selenium.webdriver.support import expected_conditions as EC
 logger = logging.getLogger(__name__)
 
 class F1WebsiteClient:
-    def __init__(self, ergast_client=None):
+    def __init__(self):
         self.base_url = "https://www.formula1.com"
         self.timeout = 30.0
-        self.ergast = ergast_client
 
     def _create_selenium_driver(self):
         selenium_url = os.getenv('SELENIUM_URL', 'http://localhost:4444')
@@ -88,7 +87,9 @@ class F1WebsiteClient:
             try:
                 data = json.loads(script.string)
                 if data.get('@type') == 'SportsEvent' and data.get('name'):
-                    return re.sub(rf'\s*{season}$', '', data['name']).strip()
+                    name = re.sub(rf'\s*{season}$', '', data['name']).strip()
+                    name = re.sub(r'^FORMULA\s+1\s+', '', name, flags=re.IGNORECASE)
+                    return name
             except:
                 pass
         return None
@@ -102,17 +103,7 @@ class F1WebsiteClient:
         if round_name:
             metadata['name'] = round_name
 
-        circuit = await self._extract_circuit_info(client, soup)
-
-        if self.ergast:
-            ergast_circuit = await self.ergast.fetch_circuit_for_round(season, metadata['round_id'])
-            if ergast_circuit:
-                circuit['lat'] = ergast_circuit.get('lat', '0')
-                circuit['long'] = ergast_circuit.get('long', '0')
-                if not circuit['locality'] and ergast_circuit.get('locality'):
-                    circuit['locality'] = ergast_circuit['locality']
-                if not circuit['country'] and ergast_circuit.get('country'):
-                    circuit['country'] = ergast_circuit['country']
+        circuit = await self._extract_circuit_info(client, soup, season, metadata['location'])
 
         sessions = await self._extract_sessions(client, season, metadata['location'], soup)
 
@@ -121,14 +112,11 @@ class F1WebsiteClient:
         if not metadata['name'] or not metadata['name'].strip():
             raise Exception("Round name is empty or invalid")
 
-        if not circuit['name'] or circuit['laps'] == 0:
-            raise Exception(f"Circuit information incomplete: name={circuit['name']}, laps={circuit['laps']}")
-
-        if circuit['lat'] == '0' or circuit['long'] == '0':
-            raise Exception(f"Circuit coordinates missing: lat={circuit['lat']}, long={circuit['long']}")
-
-        if not circuit['locality'] or not circuit['country']:
-            raise Exception(f"Circuit location missing: locality={circuit['locality']}, country={circuit['country']}")
+        if not circuit['name']:
+            raise Exception(f"Circuit name missing: name={circuit['name']}")
+        
+        if not circuit['image_base64']:
+            raise Exception(f"Circuit image missing for {circuit['name']}")
 
         if first_date == 0 or end_date == 0:
             raise Exception("Round dates incomplete")
@@ -143,13 +131,9 @@ class F1WebsiteClient:
             'sessions': sessions
         }
 
-    async def _extract_circuit_info(self, client: httpx.AsyncClient, soup: BeautifulSoup) -> Dict:
+    async def _extract_circuit_info(self, client: httpx.AsyncClient, soup: BeautifulSoup, season: int, location: str) -> Dict:
         circuit = {
             'name': '',
-            'locality': '',
-            'country': '',
-            'lat': '0',
-            'long': '0',
             'laps': 0,
             'image_base64': ''
         }
@@ -160,35 +144,26 @@ class F1WebsiteClient:
                 if data.get('@type') != 'SportsEvent':
                     continue
 
-                location = data.get('location', {})
-                if not circuit['name'] and location.get('name'):
-                    circuit['name'] = location['name']
-
-                address = location.get('address', {})
-                if address:
-                    if address.get('addressLocality'):
-                        circuit['locality'] = address['addressLocality']
-                    if address.get('addressCountry'):
-                        circuit['country'] = address['addressCountry']
-
-                geo = location.get('geo', {})
-                if geo:
-                    if geo.get('latitude') and geo['latitude'] != 0:
-                        circuit['lat'] = str(geo['latitude'])
-                    if geo.get('longitude') and geo['longitude'] != 0:
-                        circuit['long'] = str(geo['longitude'])
+                location_data = data.get('location', {})
+                if not circuit['name'] and location_data.get('name'):
+                    circuit['name'] = location_data['name']
             except:
                 pass
 
-        img = soup.select_one('img[src*="Circuit"], img[src*="circuit"], img[alt*="circuit"]')
+        img = soup.select_one('img[src*="/track/"], img[src*="Circuit"], img[src*="circuit"], img[alt*="circuit"], img[alt*="Circuit"]')
         if img and img.get('src'):
             image_url = img['src']
             if not image_url.startswith('http'):
                 image_url = self.base_url + image_url
             try:
                 circuit['image_base64'] = await self._download_image_as_base64(client, image_url)
-            except:
-                pass
+                logger.info(f"Successfully downloaded circuit image: {image_url}")
+            except Exception as e:
+                logger.error(f"Failed to download circuit image from {image_url}: {e}")
+                raise Exception(f"Circuit image download failed: {e}")
+        else:
+            logger.error(f"No circuit image element found in HTML for {location}")
+            raise Exception(f"No circuit image element found for {location}")
 
         dt_elem = soup.find('dt', text=re.compile(r'Number\s+of\s+Laps', re.IGNORECASE))
         if dt_elem:
@@ -198,9 +173,6 @@ class F1WebsiteClient:
                 match = re.search(r'(\d+)', laps_text)
                 if match:
                     circuit['laps'] = int(match.group(1))
-
-        if not circuit['name'] or not circuit['laps']:
-            raise Exception("Failed to extract circuit information")
 
         return circuit
 

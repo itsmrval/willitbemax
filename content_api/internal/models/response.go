@@ -50,12 +50,8 @@ type SeasonsResponse struct {
 
 type Circuit struct {
 	Name        string `json:"name"`
-	Lat         string `json:"lat"`
-	Long        string `json:"long"`
-	Locality    string `json:"locality"`
-	Country     string `json:"country"`
-	ImageBase64 string `json:"image_base64"`
 	Laps        int32  `json:"laps"`
+	ImageBase64 string `json:"image_base64"`
 }
 
 type SessionResult struct {
@@ -80,9 +76,9 @@ type Round struct {
 	RoundId   int32     `json:"round_id"`
 	Name      string    `json:"name"`
 	Season    int32     `json:"season"`
+	Circuit   Circuit   `json:"circuit"`
 	FirstDate int32     `json:"first_date"`
 	EndDate   int32     `json:"end_date"`
-	Circuit   Circuit   `json:"circuit"`
 	Sessions  []Session `json:"sessions"`
 }
 

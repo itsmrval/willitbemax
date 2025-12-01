@@ -38,17 +38,14 @@ Retourne tous les rounds pour une saison avec détails
                 "round_id": 0,
                 "name": "Formula 1 Australian Grand Prix 2025",
                 "season": 2025,
-                "first_date": 1710403200,
-                "end_date": 1710576000,
                 "circuit": {
                     "name": "Albert Park Circuit",
-                    "lat": "-37.8497",
-                    "long": "144.968",
-                    "locality": "Melbourne",
                     "country": "Australia",
-                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
-                    "laps": 58
+                    "laps": 58,
+                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
                 },
+                "first_date": 1710403200,
+                "end_date": 1710576000,
                 "sessions": [
                     {
                         "type": "practice_1",
@@ -121,17 +118,14 @@ Retourne les détails d'un round spécifique avec toutes les sessions et résult
                 "round_id": 0,
                 "name": "Formula 1 Australian Grand Prix 2025",
                 "season": 2025,
-                "first_date": 1710403200,
-                "end_date": 1710576000,
                 "circuit": {
                     "name": "Albert Park Circuit",
-                    "lat": "-37.8497",
-                    "long": "144.968",
-                    "locality": "Melbourne",
                     "country": "Australia",
-                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
-                    "laps": 58
+                    "laps": 58,
+                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA..."
                 },
+                "first_date": 1710403200,
+                "end_date": 1710576000,
                 "sessions": [
                     {
                         "type": "practice_1",

@@ -52,7 +52,7 @@ scheduler_api → déclenche → fetcher_service (via HTTP/gRPC)
   - `POST /fetcher/v1/fetch/rounds?season=YYYY&round=X` - Récupère les rounds depuis F1.com
 
 ### Données récupérées par round
-- **Circuit**: nom, localisation (lat/long), pays, image (base64), nombre de tours
+- **Circuit**: nom, pays, nombre de tours, image (base64) - extrait du site F1
 - **Sessions**: Practice 1-3, Qualifying, Sprint (si applicable), Race
 - **Résultats par session**:
   - Position, numéro du pilote, nom du pilote
