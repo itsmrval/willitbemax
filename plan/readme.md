@@ -39,8 +39,25 @@ scheduler_api → déclenche → fetcher_service (via HTTP/gRPC)
 
 ## APIs
 
+### Seasons
 - **content_api**: http://localhost/content/v1/seasons
 - **fetcher_service**: http://localhost/fetcher/v1/fetch/seasons
+
+### Rounds
+- **content_api**:
+  - `GET /content/v1/seasons/:year/rounds` - Liste des rounds d'une saison
+  - `GET /content/v1/seasons/:year/rounds/:round_id` - Détails d'un round spécifique
+  - Query param: `?round=X` pour filtrer un round spécifique
+- **fetcher_service**:
+  - `POST /fetcher/v1/fetch/rounds?season=YYYY&round=X` - Récupère les rounds depuis F1.com
+
+### Données récupérées par round
+- **Circuit**: nom, localisation (lat/long), pays, image (base64), nombre de tours
+- **Sessions**: Practice 1-3, Qualifying, Sprint (si applicable), Race
+- **Résultats par session**:
+  - Position, numéro du pilote, nom du pilote
+  - **Code pilote** (VER, NOR, PIA, etc.)
+  - Équipe, temps, tours complétés
 
 ---
 

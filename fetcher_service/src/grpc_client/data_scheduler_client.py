@@ -28,6 +28,23 @@ class DataSchedulerClient:
             logger.error(f"Get error: {e}")
             raise
 
+    def write_rounds(self, rounds_data):
+        try:
+            return self.stub.WriteRounds(rounds_data)
+        except grpc.RpcError as e:
+            logger.error(f"Write rounds error: {e}")
+            raise
+
+    def get_rounds(self, season: int, round_id=None):
+        try:
+            filter_req = services_pb2.RoundsFilter(season=season)
+            if round_id is not None:
+                filter_req.round_id = round_id
+            return self.stub.GetRounds(filter_req)
+        except grpc.RpcError as e:
+            logger.error(f"Get rounds error: {e}")
+            raise
+
     def health(self) -> bool:
         try:
             self.stub.GetSeasons(services_pb2.SeasonsFilter(), timeout=5.0)

@@ -163,6 +163,31 @@ class ErgastClient:
             return "in_progress"
         return "upcoming"
 
+    async def fetch_circuit_for_round(self, season: int, round_num: int) -> Dict:
+        """Fetch circuit information (including lat/long) for a specific round from Ergast"""
+        async with httpx.AsyncClient(timeout=self.timeout) as client:
+            try:
+                response = await self._fetch_with_retry(client, f"{self.url}/{season}/{round_num}.json")
+                races = response.json()["MRData"]["RaceTable"]["Races"]
+
+                if not races or len(races) == 0:
+                    logger.warning(f"No circuit data found in Ergast for season {season} round {round_num}")
+                    return {}
+
+                race = races[0]
+                circuit = race.get("Circuit", {})
+                location = circuit.get("Location", {})
+
+                return {
+                    "lat": location.get("lat", "0"),
+                    "long": location.get("long", "0"),
+                    "locality": location.get("locality", ""),
+                    "country": location.get("country", "")
+                }
+            except Exception as e:
+                logger.error(f"Failed to fetch circuit from Ergast for {season}/{round_num}: {e}")
+                return {}
+
     async def health(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:

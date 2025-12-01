@@ -22,7 +22,19 @@ message WriteResponse {
   int32 records_affected = 3;
 }
 
+message RoundsFilter {
+  int32 season = 1;
+  optional int32 round_id = 2;
+}
+
+message RoundsResponse {
+  Metadata metadata = 1;
+  RoundsData data = 2;
+}
+
 service DataSchedulerService {
   rpc WriteSeasons(SeasonsData) returns (WriteResponse);
   rpc GetSeasons(SeasonsFilter) returns (SeasonsResponse);
+  rpc WriteRounds(RoundsData) returns (WriteResponse);
+  rpc GetRounds(RoundsFilter) returns (RoundsResponse);
 }

@@ -85,9 +85,10 @@ message SessionResult {
   int32 position = 1;
   int32 driver_number = 2;
   string driver_name = 3;
-  string team = 4;
-  string time = 5;             // Temps absolu
-  int32 laps = 6;              // Tours complétés
+  string driver_code = 4;      // Code pilote (VER, NOR, etc.)
+  string team = 5;
+  string time = 6;             // Temps absolu
+  int32 laps = 7;              // Tours complétés
 }
 ```
 

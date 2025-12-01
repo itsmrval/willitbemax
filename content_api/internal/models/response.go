@@ -47,3 +47,48 @@ type SeasonsResponse struct {
 		Seasons []Season `json:"seasons"`
 	} `json:"result"`
 }
+
+type Circuit struct {
+	Name        string `json:"name"`
+	Lat         string `json:"lat"`
+	Long        string `json:"long"`
+	Locality    string `json:"locality"`
+	Country     string `json:"country"`
+	ImageBase64 string `json:"image_base64"`
+	Laps        int32  `json:"laps"`
+}
+
+type SessionResult struct {
+	Position     int32  `json:"position"`
+	DriverNumber int32  `json:"driver_number"`
+	DriverName   string `json:"driver_name"`
+	DriverCode   string `json:"driver_code"`
+	Team         string `json:"team"`
+	Time         string `json:"time"`
+	Laps         int32  `json:"laps"`
+}
+
+type Session struct {
+	Type       string          `json:"type"`
+	Date       int32           `json:"date"`
+	TotalLaps  int32           `json:"total_laps"`
+	CurrentLap int32           `json:"current_lap"`
+	Results    []SessionResult `json:"results"`
+}
+
+type Round struct {
+	RoundId   int32     `json:"round_id"`
+	Name      string    `json:"name"`
+	Season    int32     `json:"season"`
+	FirstDate int32     `json:"first_date"`
+	EndDate   int32     `json:"end_date"`
+	Circuit   Circuit   `json:"circuit"`
+	Sessions  []Session `json:"sessions"`
+}
+
+type RoundsResponse struct {
+	Metadata Metadata `json:"metadata"`
+	Result   struct {
+		Rounds []Round `json:"rounds"`
+	} `json:"result"`
+}
