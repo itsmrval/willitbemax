@@ -396,20 +396,22 @@ class F1WebsiteClient:
                     logger.error(f"Failed to fetch session {session_type}: {e}")
                     raise
 
-        # Add any missing sessions from session_dates that weren't found in result links
         for session_type, date in session_dates.items():
             if session_type not in fetched_types:
                 is_live = session_type == live_session_type
+                results = []
+                if is_live and live_positions:
+                    results = self._convert_live_positions_to_results(live_positions)
+
                 sessions.append({
                     'type': session_type,
                     'date': date,
                     'total_laps': 0,
                     'current_lap': 0,
-                    'results': [],
+                    'results': results,
                     'is_live': is_live,
                     'status': self._determine_session_status(date, is_live)
                 })
-                logger.info(f"Added missing session {session_type} with no results yet")
 
         return sessions
 

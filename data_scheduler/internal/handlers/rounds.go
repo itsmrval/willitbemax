@@ -99,6 +99,9 @@ func (h *RoundsHandler) WriteRounds(ctx context.Context, data *pb.RoundsData) (*
 	if len(data.Rounds) > 0 {
 		season := data.Rounds[0].Season
 		h.cache.Del(ctx, fmt.Sprintf("rounds:%d", season))
+		for _, round := range data.Rounds {
+			h.cache.Del(ctx, fmt.Sprintf("rounds:%d:%d", season, round.RoundId))
+		}
 	}
 
 	return &pb.WriteResponse{
