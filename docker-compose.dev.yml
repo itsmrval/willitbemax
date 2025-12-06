@@ -138,6 +138,17 @@ services:
       - willitbemax-network
     restart: unless-stopped
 
+  frontend_dev:
+    build:
+      context: ./frontend_dev
+      dockerfile: Dockerfile
+    container_name: willitbemax-frontend-dev
+    ports:
+      - "81:80"
+    networks:
+      - willitbemax-network
+    restart: unless-stopped
+
 networks:
   willitbemax-network:
     name: willitbemax-network

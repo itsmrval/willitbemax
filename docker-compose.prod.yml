@@ -116,7 +116,7 @@ services:
       - selenium
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.fetcher.rule=PathPrefix(`/fetcher/v1`)"
+      - "traefik.http.routers.fetcher.rule=Host(`api.dev.willitbemax.com`) && PathPrefix(`/fetcher/v1`)"
       - "traefik.http.routers.fetcher.entrypoints=web"
       - "traefik.http.routers.fetcher.middlewares=fetcher-stripprefix"
       - "traefik.http.middlewares.fetcher-stripprefix.stripprefix.prefixes=/fetcher/v1"
@@ -147,7 +147,7 @@ services:
       - traefik
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.content.rule=PathPrefix(`/content/v1`)"
+      - "traefik.http.routers.content.rule=Host(`api.dev.willitbemax.com`) && PathPrefix(`/content/v1`)"
       - "traefik.http.routers.content.entrypoints=web"
       - "traefik.http.routers.content.middlewares=content-stripprefix"
       - "traefik.http.middlewares.content-stripprefix.stripprefix.prefixes=/content/v1"
@@ -163,6 +163,30 @@ services:
         reservations:
           cpus: '0.25'
           memory: 256M
+
+  frontend_dev:
+    build:
+      context: ./frontend_dev
+      dockerfile: Dockerfile
+    container_name: willitbemax-frontend-dev
+    depends_on:
+      - traefik
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend-dev.rule=Host(`dev.willitbemax.com`)"
+      - "traefik.http.routers.frontend-dev.entrypoints=web"
+      - "traefik.http.services.frontend-dev.loadbalancer.server.port=80"
+    networks:
+      - willitbemax-network
+    restart: always
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
 
 networks:
   willitbemax-network:
