@@ -70,6 +70,8 @@ type Session struct {
 	TotalLaps  int32           `json:"total_laps"`
 	CurrentLap int32           `json:"current_lap"`
 	Results    []SessionResult `json:"results"`
+	IsLive     bool            `json:"is_live"`
+	Status     string          `json:"status"`
 }
 
 type Round struct {

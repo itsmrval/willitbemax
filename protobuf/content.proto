@@ -65,6 +65,8 @@ message Session {
   int32 total_laps = 3;
   int32 current_lap = 4;
   repeated SessionResult results = 5;
+  bool is_live = 6;
+  string status = 7;  // "upcoming", "live", "finished"
 }
 
 message Round {

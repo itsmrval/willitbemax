@@ -16,8 +16,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="WIBM fetcher_service", version="0.1.0")
 
 ergast = ErgastClient(settings.ERGAST_API_URL)
-f1_website = F1WebsiteClient()
 scheduler = DataSchedulerClient(settings.DATA_SCHEDULER_URI)
+f1_website = F1WebsiteClient(scheduler_client=scheduler)
 
 @app.get("/")
 async def root():
@@ -74,14 +74,17 @@ async def fetch_seasons():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/fetch/rounds")
-async def fetch_rounds(season: int, round: int = None):
+async def fetch_rounds(season: int, round: int = None, live: str = None):
     try:
+        if live and round is None:
+            raise HTTPException(status_code=400, detail="live parameter requires round parameter")
+
         if round is not None:
-            logger.info(f"Fetching round {round} for season {season}")
+            logger.info(f"Fetching round {round} for season {season}" + (f" with forced live session: {live}" if live else ""))
         else:
             logger.info(f"Fetching all rounds for season {season}")
 
-        rounds_data = await f1_website.fetch_rounds_for_season(season, specific_round_id=round)
+        rounds_data = await f1_website.fetch_rounds_for_season(season, specific_round_id=round, force_live_session=live)
 
         if not rounds_data:
             if round is not None:
@@ -104,6 +107,7 @@ async def fetch_rounds(season: int, round: int = None):
             )
 
             sessions_proto = []
+            logger.info(f"Round {round_data['round_id']} has {len(round_data['sessions'])} sessions: {[s['type'] for s in round_data['sessions']]}")
             for session_data in round_data['sessions']:
                 results_proto = []
                 for result_data in session_data['results']:
@@ -122,7 +126,9 @@ async def fetch_rounds(season: int, round: int = None):
                     date=session_data['date'],
                     total_laps=session_data['total_laps'],
                     current_lap=session_data['current_lap'],
-                    results=results_proto
+                    results=results_proto,
+                    is_live=session_data.get('is_live', False),
+                    status=session_data.get('status', 'finished')
                 ))
 
             proto_rounds.append(content_pb2.Round(

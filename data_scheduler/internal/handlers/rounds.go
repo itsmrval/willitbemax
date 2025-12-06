@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/willitbemax/data_scheduler/internal/cache"
@@ -27,6 +28,11 @@ func (h *RoundsHandler) WriteRounds(ctx context.Context, data *pb.RoundsData) (*
 
 	var operations []mongo.WriteModel
 	for _, round := range data.Rounds {
+		var sessionTypes []string
+		for _, s := range round.Sessions {
+			sessionTypes = append(sessionTypes, s.Type)
+		}
+		log.Printf("WriteRounds: Round %d has %d sessions: %v", round.RoundId, len(round.Sessions), sessionTypes)
 		var circuitBson bson.M
 		if round.Circuit != nil {
 			circuitBson = bson.M{
@@ -57,6 +63,8 @@ func (h *RoundsHandler) WriteRounds(ctx context.Context, data *pb.RoundsData) (*
 				"total_laps":  session.TotalLaps,
 				"current_lap": session.CurrentLap,
 				"results":     resultsBson,
+				"is_live":     session.IsLive,
+				"status":      session.Status,
 			})
 		}
 
@@ -72,6 +80,8 @@ func (h *RoundsHandler) WriteRounds(ctx context.Context, data *pb.RoundsData) (*
 				"sessions":   sessionsBson,
 			},
 		}
+
+		log.Printf("WriteRounds: Storing %d sessions for round %d", len(sessionsBson), round.RoundId)
 
 		operations = append(operations, mongo.NewUpdateOneModel().
 			SetFilter(filter).
@@ -152,6 +162,7 @@ func (h *RoundsHandler) GetRounds(ctx context.Context, filter *pb.RoundsFilter) 
 		}
 
 		if sessions, ok := doc["sessions"].(bson.A); ok {
+			log.Printf("GetRounds: Round %d has %d sessions in database", round.RoundId, len(sessions))
 			for _, s := range sessions {
 				if sessionMap, ok := s.(bson.M); ok {
 					session := &pb.Session{
@@ -160,6 +171,8 @@ func (h *RoundsHandler) GetRounds(ctx context.Context, filter *pb.RoundsFilter) 
 						TotalLaps:  getInt32(sessionMap, "total_laps"),
 						CurrentLap: getInt32(sessionMap, "current_lap"),
 						Results:    []*pb.SessionResult{},
+						IsLive:     getBool(sessionMap, "is_live"),
+						Status:     getString(sessionMap, "status"),
 					}
 
 					if results, ok := sessionMap["results"].(bson.A); ok {

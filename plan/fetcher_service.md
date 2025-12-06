@@ -131,6 +131,15 @@ Obtenir le statut du fetcher
 6. Appeler data_scheduler gRPC pour persister
 7. Retourner résultat de succès/échec
 
+## Données live
+
+### Population des numéros de pilotes
+Les données live ne fournissent pas les numéros de pilotes. Le service:
+1. Récupère les driver_standings depuis data_scheduler pour la saison
+2. Construit une map driver_code → driver_number (ex: "NOR" → 4)
+3. Lors du scraping live, utilise cette map pour peupler driver_number
+4. Échoue si driver_code manquant ou non trouvé dans la map
+
 
 ## Configuration
 

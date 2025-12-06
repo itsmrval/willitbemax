@@ -35,6 +35,15 @@ func getString(m bson.M, key string) string {
 	return ""
 }
 
+func getBool(m bson.M, key string) bool {
+	if val, ok := m[key]; ok && val != nil {
+		if b, ok := val.(bool); ok {
+			return b
+		}
+	}
+	return false
+}
+
 type SeasonsHandler struct {
 	db    *database.MongoDB
 	cache *cache.RedisClient
@@ -94,6 +103,10 @@ func (h *SeasonsHandler) WriteSeasons(ctx context.Context, data *pb.SeasonsData)
 	}
 
 	h.cache.Del(ctx, "seasons:all")
+	for _, season := range data.Seasons {
+		cacheKey := fmt.Sprintf("seasons:%d", season.Year)
+		h.cache.Del(ctx, cacheKey)
+	}
 
 	return &pb.WriteResponse{
 		Success:         true,

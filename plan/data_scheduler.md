@@ -47,4 +47,6 @@
 ## Stratégie de cache
 - Vérifier Redis lors de la lecture et retourner si en cache
 - Requêter MongoDB en cas de cache manquant et mettre en cache le résultat puis retourner
-- Invalider/mettre à jour le cache lors des opérations d'écriture
+- Invalider le cache lors des opérations d'écriture:
+  - `WriteSeasons`: invalide `seasons:all` et `seasons:{year}` pour chaque saison écrite
+  - `WriteRounds`: invalide les clés de cache correspondantes

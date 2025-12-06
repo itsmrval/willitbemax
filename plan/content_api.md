@@ -228,6 +228,10 @@ Retourne le classement des pilotes pour une saison
 ### GET /v1/seasons
 Retourne toutes les saisons
 
+**Paramètres de requête**:
+- `year` (optionnel): Filtrer par année (ex: `?year=2025`)
+- `status` (optionnel): Filtrer par statut (ex: `?status=in_progress`)
+
 **Réponse**:
 ```json
 {

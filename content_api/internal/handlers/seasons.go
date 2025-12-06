@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +24,20 @@ func (h *SeasonsHandler) GetSeasons(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	resp, err := h.grpcClient.GetSeasons(ctx, &pb.SeasonsFilter{})
+	filter := &pb.SeasonsFilter{}
+
+	if yearStr := c.Query("year"); yearStr != "" {
+		if year, err := strconv.ParseInt(yearStr, 10, 32); err == nil {
+			yearInt32 := int32(year)
+			filter.Year = &yearInt32
+		}
+	}
+
+	if status := c.Query("status"); status != "" {
+		filter.Status = &status
+	}
+
+	resp, err := h.grpcClient.GetSeasons(ctx, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{
 			Error:   "grpc_error",

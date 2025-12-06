@@ -17,9 +17,38 @@ from selenium.webdriver.support import expected_conditions as EC
 logger = logging.getLogger(__name__)
 
 class F1WebsiteClient:
-    def __init__(self):
+    def __init__(self, scheduler_client=None):
         self.base_url = "https://www.formula1.com"
         self.timeout = 30.0
+        self.scheduler_client = scheduler_client
+        self._driver_number_cache = {}
+
+    def _fetch_driver_number_mapping(self, season: int) -> Dict[str, int]:
+        if not self.scheduler_client:
+            raise Exception("No scheduler client available for driver number lookup")
+
+        cache_key = f"season_{season}"
+        if cache_key in self._driver_number_cache:
+            return self._driver_number_cache[cache_key]
+
+        response = self.scheduler_client.get_seasons(year=season)
+
+        if not response.data.seasons:
+            raise Exception(f"No season data found for {season}")
+
+        season_data = response.data.seasons[0]
+        mapping = {}
+
+        for standing in season_data.driver_standings:
+            if standing.driver_code and standing.driver_number > 0:
+                mapping[standing.driver_code] = standing.driver_number
+
+        if not mapping:
+            raise Exception(f"No driver standings found for season {season}")
+
+        self._driver_number_cache[cache_key] = mapping
+        logger.info(f"Loaded {len(mapping)} driver number mappings for season {season}")
+        return mapping
 
     def _create_selenium_driver(self):
         selenium_url = os.getenv('SELENIUM_URL', 'http://localhost:4444')
@@ -60,7 +89,7 @@ class F1WebsiteClient:
         finally:
             driver.quit()
 
-    async def fetch_rounds_for_season(self, season: int, specific_round_id: int = None) -> List[Dict]:
+    async def fetch_rounds_for_season(self, season: int, specific_round_id: int = None, force_live_session: str = None) -> List[Dict]:
         rounds_metadata = await asyncio.to_thread(self._fetch_schedule_with_selenium, season)
 
         if specific_round_id is not None:
@@ -73,7 +102,7 @@ class F1WebsiteClient:
             all_rounds = []
             for metadata in rounds_metadata:
                 try:
-                    round_data = await self._fetch_round_details(client, season, metadata)
+                    round_data = await self._fetch_round_details(client, season, metadata, force_live_session)
                     all_rounds.append(round_data)
                     await asyncio.sleep(1)
                 except Exception as e:
@@ -94,7 +123,7 @@ class F1WebsiteClient:
                 pass
         return None
 
-    async def _fetch_round_details(self, client: httpx.AsyncClient, season: int, metadata: Dict) -> Dict:
+    async def _fetch_round_details(self, client: httpx.AsyncClient, season: int, metadata: Dict, force_live_session: str = None) -> Dict:
         url = f"{self.base_url}/en/racing/{season}/{metadata['location']}"
         html = await self._fetch_with_retry(client, url)
         soup = BeautifulSoup(html, 'html.parser')
@@ -105,7 +134,7 @@ class F1WebsiteClient:
 
         circuit = await self._extract_circuit_info(client, soup, season, metadata['location'])
 
-        sessions = await self._extract_sessions(client, season, metadata['location'], soup)
+        sessions = await self._extract_sessions(client, season, metadata['location'], soup, force_live_session)
 
         first_date, end_date = self._extract_weekend_dates(soup, season)
 
@@ -267,9 +296,43 @@ class F1WebsiteClient:
                 return type_val
         return None
 
-    async def _extract_sessions(self, client: httpx.AsyncClient, season: int, location: str, soup: BeautifulSoup) -> List[Dict]:
+    def _detect_live_session_from_html(self, soup: BeautifulSoup) -> Optional[str]:
+        session_text_map = {
+            'practice 1': 'practice_1',
+            'practice 2': 'practice_2',
+            'practice 3': 'practice_3',
+            'qualifying': 'qualifying',
+            'sprint qualifying': 'sprint_qualifying',
+            'sprint': 'sprint',
+            'race': 'race'
+        }
+
+        live_timing_elements = soup.find_all(text=re.compile(r'Live\s+Timing', re.IGNORECASE))
+        if not live_timing_elements:
+            return None
+
+        for element in live_timing_elements:
+            parent = element.parent
+            while parent and parent.name != 'body':
+                row_text = parent.get_text().lower()
+                for session_text, session_type in session_text_map.items():
+                    if session_text in row_text:
+                        logger.info(f"Detected live session: {session_type}")
+                        return session_type
+                parent = parent.parent
+
+        return None
+
+    async def _extract_sessions(self, client: httpx.AsyncClient, season: int, location: str, soup: BeautifulSoup, force_live_session: str = None) -> List[Dict]:
         session_dates = await asyncio.to_thread(self._extract_all_session_dates_sync, season, location)
-        result_links = soup.find_all('a', href=re.compile(rf'/results/{season}/races/\d+/{location}'))
+        logger.info(f"Extracted session dates for {location}: {list(session_dates.keys())}")
+        result_links = soup.find_all('a', href=re.compile(rf'/results/{season}/races/\d+/[^/]+/(practice|qualifying|sprint|race)'))
+
+        live_session_type = force_live_session if force_live_session else self._detect_live_session_from_html(soup)
+        live_positions = []
+        if live_session_type:
+            logger.info(f"{'Forced' if force_live_session else 'Detected'} live session for {location}: {live_session_type}")
+            live_positions = await self._fetch_live_positions_via_selenium(season)
 
         if not result_links:
             return [{
@@ -277,7 +340,9 @@ class F1WebsiteClient:
                 'date': date,
                 'total_laps': 0,
                 'current_lap': 0,
-                'results': []
+                'results': [],
+                'is_live': session_type == live_session_type,
+                'status': self._determine_session_status(date, session_type == live_session_type)
             } for session_type, date in session_dates.items()]
 
         sessions = []
@@ -294,7 +359,7 @@ class F1WebsiteClient:
 
         for link in result_links:
             href = link.get('href', '')
-            if not href or f'/results/{season}/' not in href or f'/{location}/' not in href:
+            if not href or f'/results/{season}/' not in href:
                 continue
 
             for path_key, session_type in session_type_map.items():
@@ -305,14 +370,24 @@ class F1WebsiteClient:
 
                 try:
                     full_url = href if href.startswith('http') else self.base_url + href
-                    results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
+                    session_date = session_dates.get(session_type, 0)
+                    is_live = session_type == live_session_type
+                    status = self._determine_session_status(session_date, is_live)
+
+                    if is_live and live_positions:
+                        logger.info(f"Using live positions for {session_type}")
+                        results = self._convert_live_positions_to_results(live_positions)
+                    else:
+                        results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
 
                     sessions.append({
                         'type': session_type,
-                        'date': session_dates.get(session_type, 0),
+                        'date': session_date,
                         'total_laps': 0,
                         'current_lap': 0,
-                        'results': results
+                        'results': results,
+                        'is_live': is_live,
+                        'status': status
                     })
                     fetched_types.add(session_type)
                     await asyncio.sleep(0.5)
@@ -320,7 +395,28 @@ class F1WebsiteClient:
                 except Exception as e:
                     logger.error(f"Failed to fetch session {session_type}: {e}")
                     raise
+
+        # Add any missing sessions from session_dates that weren't found in result links
+        for session_type, date in session_dates.items():
+            if session_type not in fetched_types:
+                is_live = session_type == live_session_type
+                sessions.append({
+                    'type': session_type,
+                    'date': date,
+                    'total_laps': 0,
+                    'current_lap': 0,
+                    'results': [],
+                    'is_live': is_live,
+                    'status': self._determine_session_status(date, is_live)
+                })
+                logger.info(f"Added missing session {session_type} with no results yet")
+
         return sessions
+
+    def _convert_live_positions_to_results(self, live_positions: List[Dict]) -> List[Dict]:
+        if isinstance(live_positions, list):
+            return sorted(live_positions, key=lambda x: x.get('position', 0))
+        return []
 
     def _fetch_session_results_sync(self, url: str) -> List[Dict]:
         driver = self._create_selenium_driver()
@@ -392,3 +488,103 @@ class F1WebsiteClient:
                 wait_time = 2 ** attempt
                 logger.warning(f"Retry {attempt + 1}/{max_retries} for {url}: {e}")
                 await asyncio.sleep(wait_time)
+
+    async def _check_live_timing_static(self, client: httpx.AsyncClient) -> Optional[Dict]:
+        try:
+            url = "https://livetiming.formula1.com/static/SessionInfo.json"
+            response = await client.get(url)
+
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logger.debug(f"No live session found: {e}")
+            return None
+
+    def _scrape_live_timing_page_sync(self, season: int) -> List[Dict]:
+        driver = self._create_selenium_driver()
+        try:
+            url = "https://www.formula1.com/en/timing/f1-live-lite"
+            driver.get(url)
+
+            WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.TAG_NAME, "table"))
+            )
+
+            import time
+            time.sleep(2)
+
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            driver_number_mapping = self._fetch_driver_number_mapping(season)
+
+            results = []
+            table = soup.select_one('table')
+
+            if table:
+                rows = table.select('tbody tr')
+                logger.info(f"Found {len(rows)} rows in live timing table")
+
+                for row in rows:
+                    cells = row.select('td')
+
+                    position_match = re.search(r'\d+', cells[0].text.strip())
+                    position = int(position_match.group())
+
+                    driver_cell = cells[1]
+
+                    first_name_elem = driver_cell.select_one('.driverName span.font-normal')
+                    last_name_elem = driver_cell.select_one('.driverName span.uppercase')
+                    team_elem = driver_cell.select_one('.text-grey-60')
+                    code_elem = driver_cell.select_one('.font-formula.tablet\\:hidden')
+
+                    first_name = first_name_elem.text.strip() if first_name_elem else ''
+                    last_name = last_name_elem.text.strip() if last_name_elem else ''
+                    driver_name = f"{first_name} {last_name}".strip()
+                    team = team_elem.text.strip() if team_elem else ''
+                    driver_code = code_elem.text.strip() if code_elem else ''
+
+                    driver_number = 0
+                    number_elem = driver_cell.select_one('[data-driver-number]')
+                    if number_elem:
+                        driver_number = int(number_elem.get('data-driver-number'))
+
+                    if driver_number == 0:
+                        if not driver_code:
+                            raise Exception(f"Missing driver_code for position {position}, cannot lookup driver_number")
+                        if driver_code not in driver_number_mapping:
+                            raise Exception(f"Driver code '{driver_code}' not found in database for season {season}")
+                        driver_number = driver_number_mapping[driver_code]
+                        logger.info(f"Populated driver_number {driver_number} for {driver_code} from database")
+
+                    time_val = cells[2].text.strip()
+
+                    results.append({
+                        'position': position,
+                        'driver_number': driver_number,
+                        'driver_name': driver_name,
+                        'driver_code': driver_code,
+                        'team': team,
+                        'time': time_val,
+                        'laps': 0
+                    })
+
+            return results
+        finally:
+            driver.quit()
+
+    async def _fetch_live_positions_via_selenium(self, season: int) -> List[Dict]:
+        return await asyncio.to_thread(self._scrape_live_timing_page_sync, season)
+
+    def _determine_session_status(self, session_date: int, is_live: bool = False) -> str:
+        if is_live:
+            return "live"
+
+        current_time = int(datetime.now().timestamp())
+        session_duration = 7200
+
+        if current_time < session_date:
+            return "upcoming"
+        elif current_time < session_date + session_duration:
+            return "live"
+        else:
+            return "finished"

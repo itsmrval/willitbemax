@@ -19,9 +19,9 @@ class DataSchedulerClient:
     def get_seasons(self, year=None, status=None):
         try:
             filter_req = services_pb2.SeasonsFilter()
-            if year:
+            if year is not None:
                 filter_req.year = year
-            if status:
+            if status is not None:
                 filter_req.status = status
             return self.stub.GetSeasons(filter_req)
         except grpc.RpcError as e:

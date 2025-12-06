@@ -78,6 +78,8 @@ func (h *RoundsHandler) GetRounds(c *gin.Context) {
 				TotalLaps:  s.TotalLaps,
 				CurrentLap: s.CurrentLap,
 				Results:    results,
+				IsLive:     s.IsLive,
+				Status:     s.Status,
 			})
 		}
 
@@ -171,6 +173,8 @@ func (h *RoundsHandler) GetRound(c *gin.Context) {
 				TotalLaps:  s.TotalLaps,
 				CurrentLap: s.CurrentLap,
 				Results:    results,
+				IsLive:     s.IsLive,
+				Status:     s.Status,
 			})
 		}
 
