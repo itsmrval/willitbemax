@@ -327,6 +327,7 @@ class F1WebsiteClient:
         session_dates = await asyncio.to_thread(self._extract_all_session_dates_sync, season, location)
         logger.info(f"Extracted session dates for {location}: {list(session_dates.keys())}")
         result_links = soup.find_all('a', href=re.compile(rf'/results/{season}/races/\d+/[^/]+/(practice|qualifying|sprint|race)'))
+        logger.info(f"Found {len(result_links)} result links: {[link.get('href', '') for link in result_links]}")
 
         live_session_type = force_live_session if force_live_session else self._detect_live_session_from_html(soup)
         live_positions = []
@@ -371,8 +372,13 @@ class F1WebsiteClient:
                 try:
                     full_url = href if href.startswith('http') else self.base_url + href
                     session_date = session_dates.get(session_type, 0)
-                    # If result links exist, the session is finished regardless of live timing detection
-                    status = "finished"
+                    # Check if session has actually happened before marking as finished
+                    current_time = int(datetime.now().timestamp())
+                    if current_time >= session_date and session_date > 0:
+                        status = "finished"
+                    else:
+                        status = "upcoming"
+                    logger.info(f"Fetching results for {session_type} from {href} (date: {session_date}, current: {current_time}, status: {status})")
 
                     results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
 
@@ -399,6 +405,9 @@ class F1WebsiteClient:
                 if is_live and live_positions:
                     results = self._convert_live_positions_to_results(live_positions)
 
+                status = self._determine_session_status(date, is_live)
+                logger.info(f"Adding {session_type} without result link (date: {date}, is_live: {is_live}, status: {status})")
+
                 sessions.append({
                     'type': session_type,
                     'date': date,
@@ -406,7 +415,7 @@ class F1WebsiteClient:
                     'current_lap': 0,
                     'results': results,
                     'is_live': is_live,
-                    'status': self._determine_session_status(date, is_live)
+                    'status': status
                 })
 
         return sessions

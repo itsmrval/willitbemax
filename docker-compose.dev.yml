@@ -142,7 +142,11 @@ services:
     build:
       context: ./frontend_dev
       dockerfile: Dockerfile
+      args:
+        - REACT_APP_CONTENT_API_URL=http://localhost
     container_name: willitbemax-frontend-dev
+    environment:
+      - REACT_APP_CONTENT_API_URL=http://localhost
     ports:
       - "81:80"
     networks:

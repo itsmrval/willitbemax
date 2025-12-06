@@ -31,6 +31,7 @@ func main() {
 
 	router := gin.New()
 
+	router.Use(middleware.CORS())
 	router.Use(middleware.ErrorHandler())
 	router.Use(middleware.RequestLogger())
 

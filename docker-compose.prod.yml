@@ -168,7 +168,11 @@ services:
     build:
       context: ./frontend_dev
       dockerfile: Dockerfile
+      args:
+        - REACT_APP_CONTENT_API_URL=http://api.dev.willitbemax.com
     container_name: willitbemax-frontend-dev
+    environment:
+      - REACT_APP_CONTENT_API_URL=http://api.dev.willitbemax.com
     depends_on:
       - traefik
     labels:
