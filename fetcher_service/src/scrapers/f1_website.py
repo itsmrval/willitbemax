@@ -371,14 +371,10 @@ class F1WebsiteClient:
                 try:
                     full_url = href if href.startswith('http') else self.base_url + href
                     session_date = session_dates.get(session_type, 0)
-                    is_live = session_type == live_session_type
-                    status = self._determine_session_status(session_date, is_live)
+                    # If result links exist, the session is finished regardless of live timing detection
+                    status = "finished"
 
-                    if is_live and live_positions:
-                        logger.info(f"Using live positions for {session_type}")
-                        results = self._convert_live_positions_to_results(live_positions)
-                    else:
-                        results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
+                    results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
 
                     sessions.append({
                         'type': session_type,
@@ -386,7 +382,7 @@ class F1WebsiteClient:
                         'total_laps': 0,
                         'current_lap': 0,
                         'results': results,
-                        'is_live': is_live,
+                        'is_live': False,  # Session cannot be live if results are available
                         'status': status
                     })
                     fetched_types.add(session_type)
@@ -582,11 +578,8 @@ class F1WebsiteClient:
             return "live"
 
         current_time = int(datetime.now().timestamp())
-        session_duration = 7200
 
         if current_time < session_date:
             return "upcoming"
-        elif current_time < session_date + session_duration:
-            return "live"
         else:
             return "finished"

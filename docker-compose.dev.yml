@@ -1,3 +1,5 @@
+version: '3.8'
+
 services:
   traefik:
     image: traefik:v2.11
@@ -7,7 +9,7 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
-      - "--log.level=INFO"
+      - "--log.level=DEBUG"
     ports:
       - "80:80"
       - "8888:8080"
@@ -37,6 +39,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 40s
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -53,6 +56,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   data_scheduler:
     build:
@@ -60,9 +64,10 @@ services:
       dockerfile: data_scheduler/Dockerfile
     container_name: willitbemax-data-scheduler
     environment:
-      GRPC_PORT: 50051
-      MONGO_URI: mongodb://admin:password@mongo:27017/content?authSource=admin
-      REDIS_URI: redis://redis:6379
+      - GRPC_PORT=50051
+      - MONGO_URI=mongodb://admin:password@mongo:27017/content?authSource=admin
+      - REDIS_URI=redis://redis:6379
+      - LOG_LEVEL=DEBUG
     ports:
       - "50051:50051"
     depends_on:
@@ -90,11 +95,11 @@ services:
       dockerfile: fetcher_service/Dockerfile
     container_name: willitbemax-fetcher-service
     environment:
-      DATA_SCHEDULER_URI: data_scheduler:50051
-      ERGAST_API_URL: https://api.jolpi.ca/ergast/f1
-      SELENIUM_URL: http://selenium:4444
-      LOG_LEVEL: INFO
-      HTTP_PORT: 8082
+      - DATA_SCHEDULER_URI=data_scheduler:50051
+      - ERGAST_API_URL=https://api.jolpi.ca/ergast/f1
+      - SELENIUM_URL=http://selenium:4444
+      - LOG_LEVEL=DEBUG
+      - HTTP_PORT=8082
     depends_on:
       - data_scheduler
       - traefik
@@ -116,9 +121,9 @@ services:
       dockerfile: content_api/Dockerfile
     container_name: willitbemax-content-api
     environment:
-      HTTP_PORT: 8080
-      DATA_SCHEDULER_URI: data_scheduler:50051
-      LOG_LEVEL: INFO
+      - HTTP_PORT=8080
+      - DATA_SCHEDULER_URI=data_scheduler:50051
+      - LOG_LEVEL=DEBUG
     depends_on:
       - data_scheduler
       - traefik
@@ -135,6 +140,7 @@ services:
 
 networks:
   willitbemax-network:
+    name: willitbemax-network
     driver: bridge
 
 volumes:
