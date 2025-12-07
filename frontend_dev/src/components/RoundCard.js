@@ -113,15 +113,37 @@ const RoundCard = ({ round, session, isLive }) => {
 
                 {isLive && session.results && session.results.length > 0 && (
                   <div className="mt-4 pt-4 border-t border-slate-600">
-                    <h5 className="text-sm font-semibold text-slate-300 mb-3">Live Standings</h5>
-                    <div className="space-y-2">
-                      {session.results.slice(0, 5).map((result, idx) => (
-                        <div key={idx} className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-3">
-                            <span className="text-slate-400 font-bold font-mono w-5">{result.position}</span>
-                            <span className="text-white font-semibold">{result.driver_name}</span>
+                    <div className="flex items-center justify-between mb-3">
+                      <h5 className="text-sm font-semibold text-slate-300">Live Standings</h5>
+                      {session.current_lap > 0 && session.total_laps > 0 && (
+                        <span className="text-xs text-slate-400">
+                          Lap {session.current_lap}/{session.total_laps}
+                        </span>
+                      )}
+                    </div>
+                    <div className="space-y-2 max-h-96 overflow-y-auto">
+                      {session.results.map((result, idx) => (
+                        <div key={idx} className="flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-slate-600/50 transition-colors">
+                          <div className="flex items-center gap-3 flex-1">
+                            <span className="text-slate-400 font-bold font-mono w-6 text-center">{result.position}</span>
+                            <div className="flex flex-col flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-white font-semibold">{result.driver_name}</span>
+                                <span className="text-slate-500 text-xs font-mono">{result.driver_code}</span>
+                              </div>
+                              <span className="text-slate-500 text-xs">{result.team}</span>
+                            </div>
                           </div>
-                          <span className="text-slate-300 font-mono text-xs">{result.time}</span>
+                          <div className="flex flex-col items-end gap-0.5">
+                            <span className={`font-mono text-xs ${result.position === 1 ? 'text-green-400' : 'text-slate-300'}`}>
+                              {result.time}
+                            </span>
+                            {result.laps > 0 && (
+                              <span className="text-slate-500 text-xs">
+                                {result.laps} laps
+                              </span>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
