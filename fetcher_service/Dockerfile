@@ -11,9 +11,9 @@ RUN python -m grpc_tools.protoc -I. \
     --grpc_python_out=gen/python \
     *.proto
 
-RUN sed -i 's/^import content_pb2/from . import content_pb2/' gen/python/services_pb2.py || true
-RUN sed -i 's/^import content_pb2/from . import content_pb2/' gen/python/services_pb2_grpc.py || true
-RUN sed -i 's/^import services_pb2/from . import services_pb2/' gen/python/services_pb2_grpc.py || true
+RUN sed -i'' -e 's/^import content_pb2/from . import content_pb2/' gen/python/services_pb2.py || true
+RUN sed -i'' -e 's/^import content_pb2/from . import content_pb2/' gen/python/services_pb2_grpc.py || true
+RUN sed -i'' -e 's/^import services_pb2/from . import services_pb2/' gen/python/services_pb2_grpc.py || true
 
 RUN touch gen/python/__init__.py
 RUN touch gen/__init__.py
