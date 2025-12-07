@@ -102,6 +102,7 @@ func (h *RoundsHandler) WriteRounds(ctx context.Context, data *pb.RoundsData) (*
 		for _, round := range data.Rounds {
 			h.cache.Del(ctx, fmt.Sprintf("rounds:%d:%d", season, round.RoundId))
 		}
+		log.Printf("Cache invalidated for season %d (%d rounds)", season, len(data.Rounds))
 	}
 
 	return &pb.WriteResponse{

@@ -107,7 +107,7 @@ class F1WebsiteClient:
                     await asyncio.sleep(1)
                 except Exception as e:
                     logger.error(f"Failed to fetch round {metadata.get('name', 'Unknown')}: {e}")
-                    return []
+                    raise
 
             return all_rounds
 
@@ -307,11 +307,21 @@ class F1WebsiteClient:
             'race': 'race'
         }
 
-        live_timing_elements = soup.find_all(text=re.compile(r'Live\s+Timing', re.IGNORECASE))
-        if not live_timing_elements:
+        # Search for multiple live indicators: "Live Timing", "Live", "LIVE COVERAGE"
+        live_patterns = [
+            r'Live\s+Timing',
+            r'\bLive\b',
+            r'LIVE\s+COVERAGE'
+        ]
+
+        live_elements = []
+        for pattern in live_patterns:
+            live_elements.extend(soup.find_all(text=re.compile(pattern, re.IGNORECASE)))
+
+        if not live_elements:
             return None
 
-        for element in live_timing_elements:
+        for element in live_elements:
             parent = element.parent
             while parent and parent.name != 'body':
                 row_text = parent.get_text().lower()
@@ -372,15 +382,20 @@ class F1WebsiteClient:
                 try:
                     full_url = href if href.startswith('http') else self.base_url + href
                     session_date = session_dates.get(session_type, 0)
-                    # Check if session has actually happened before marking as finished
-                    current_time = int(datetime.now().timestamp())
-                    if current_time >= session_date and session_date > 0:
-                        status = "finished"
-                    else:
-                        status = "upcoming"
-                    logger.info(f"Fetching results for {session_type} from {href} (date: {session_date}, current: {current_time}, status: {status})")
+
+                    # Check if this session is currently live
+                    is_live = session_type == live_session_type
+
+                    # Determine status consistently using the status method
+                    status = self._determine_session_status(session_date, is_live)
+
+                    logger.info(f"Fetching results for {session_type} from {href} (date: {session_date}, is_live: {is_live}, status: {status})")
 
                     results = await asyncio.to_thread(self._fetch_session_results_sync, full_url)
+
+                    # If session is live but has results, those are partial/live results
+                    if is_live and live_positions:
+                        results = self._convert_live_positions_to_results(live_positions)
 
                     sessions.append({
                         'type': session_type,
@@ -388,7 +403,7 @@ class F1WebsiteClient:
                         'total_laps': 0,
                         'current_lap': 0,
                         'results': results,
-                        'is_live': False,  # Session cannot be live if results are available
+                        'is_live': is_live,
                         'status': status
                     })
                     fetched_types.add(session_type)
@@ -429,8 +444,16 @@ class F1WebsiteClient:
         driver = self._create_selenium_driver()
         try:
             driver.get(url)
-            WebDriverWait(driver, 20).until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "table tbody tr")) > 0)
+            # Wait up to 30 seconds for results table to load
+            try:
+                WebDriverWait(driver, 30).until(lambda d: len(d.find_elements(By.CSS_SELECTOR, "table tbody tr")) > 0)
+            except Exception as e:
+                logger.warning(f"Timeout waiting for results table at {url}: {e}. Proceeding with empty results.")
+                return []
             return self._parse_session_results(BeautifulSoup(driver.page_source, 'html.parser'))
+        except Exception as e:
+            logger.error(f"Error fetching session results from {url}: {e}")
+            return []
         finally:
             driver.quit()
 
@@ -514,9 +537,13 @@ class F1WebsiteClient:
             url = "https://www.formula1.com/en/timing/f1-live-lite"
             driver.get(url)
 
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.TAG_NAME, "table"))
-            )
+            try:
+                WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.TAG_NAME, "table"))
+                )
+            except Exception as e:
+                logger.warning(f"Failed to load live timing page: {e}. Returning empty results.")
+                return []
 
             import time
             time.sleep(2)
@@ -576,6 +603,9 @@ class F1WebsiteClient:
                     })
 
             return results
+        except Exception as e:
+            logger.error(f"Error scraping live timing page: {e}. Returning empty results.")
+            return []
         finally:
             driver.quit()
 
